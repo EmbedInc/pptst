@@ -1,0 +1,109 @@
+                       PIC Programmer Test Firmware
+                              17 March 2019
+
+
+This document describes the PPTST firmware.  It runs on a Microchip PIC
+16F876 on a ReadyBoard-01 with additional circuitry added according to the
+PPTST schematic in the PICPRG schematics directory.  The purpose of the
+PPTST unit is to test PIC programmers as part of the production process.
+
+
+Test procedure
+
+  To test a PIC programmer follow these steps:
+
+  1 - Make sure the tester is powered up.
+
+  2 - Make sure the programmer to test is powered up.
+
+  3 - All 8 LEDs on the tester should be in the low position.
+
+  4 - Connect the programmer output to the 6 pin header on the tester.
+
+  5 - Connect the programmer serial command port to the tester serial
+      port.
+
+  6 - Testing begins automatically when the tester detects the programmer
+      responding to commands.  Each individual test has its own ID, which
+      is diplayed on the tester LEDs during that test.  Since each test
+      only lasts a few 10s of milliseconds typically, the LEDs on the
+      tester will appear to count as each of the tests are performed in
+      turn.
+
+      If a test fails, the test process is aborted and the ID of the
+      failed test is displayed on the LEDs.  The failure status is held
+      until the communication link to the programmer is broken, after
+      which the display reverts to all LEDs low to indicate ready for the
+      next test.
+
+      If all tests pass, then all LEDs will display in the high position.
+      No test has this code, so all LEDs high always indicates a passed
+      unit.  The pass display is held until the communication link with
+      the programmer is broken, after which the display reverts to all
+      LEDs low to indicate ready for the next test.
+
+      The entire suite of tests takes less than 2 seconds.
+
+  7 - Disconnect the programmer from the tester.  The tester display will
+      show all LEDs down to indicate ready for the next test.
+
+  8 - To test more programmers, repeat from step 3.
+
+
+Calibration
+
+  The unit must be calibrated after new firmware is programmed into the
+  controller or any electrical changes are made.
+
+  Calibration is performed by installing the "PPTST CAL" plug onto the 6
+  pin header.  This connects the Vpp, Vdd, PGD, and PGC signals to known 5
+  volts.  The values read from this known input is used to adjust the gain
+  factor of each A/D channel.  The connection to the serial port is
+  irrelevant during calibration.
+
+  Calibration is performed if the RB7 pushbutton is pressed on powerup or
+  reset.  Make sure the calibration plug is installed on the 6 pin header,
+  then hold the RB7 pushubutton down during powerup or while briefly
+  pressing the "Reset" pushbutton.  During calibration the display will be
+  all LEDs up except the right most one.
+
+  Once calibration has been performed, remove the "PPTST CAL" plug.  The
+  tester is now ready to use normally.
+
+
+Firmware versions
+
+  PPTST 1, 24 Feb 2008
+
+    First version.  This is the version sent to Data Technik for testing
+    USBProgs 200-299.  Parameters only set for USBProg. EasyProg and
+    ProProg have been implemented, but the test parameters are currently
+    just copied from the USBProg.  Not intended for testing EasyProg or
+    ProProg.
+
+  PPTST 2, 17 Apr 2008
+
+    Now sets the target programmer name to "Passed" when all tests pass.
+
+  PPTST 3, 18 Apr 2008
+
+    Only sets the target name to "Passed" when the tests pass if the name
+    was the one a newly programmed unit has.  If the name is not as
+    originally programmed, then the unit is assumed to have already been
+    assigned a serial number and and the name is not altered to avoid
+    loosing the serial number.  The special name "Passed" is only for use
+    with the production test program anyway, and that program assumes a
+    virgin board and programs all PICs before running the tests.
+
+  PPTST 4, 10 Aug 2008
+
+    Added support for LProg PIC programmer.  This programmer has fixed Vdd
+    and Vpp, and communicates of the serial link using 19.2Kbaud instead
+    of the normal 115.2Kbaud.  This version is fixed at 19.2Kbaud and is
+    therefore only usable with the LProg.
+
+  PPTST 5 seq 1, 17 Mar 2019
+
+    The source code was moved into its own subdirectory, which was set up
+    as a GIT repository.  No functional changes to the source code.  The
+    only changes were to support the different build script conventions.

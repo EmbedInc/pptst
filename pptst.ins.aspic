@@ -1,0 +1,317 @@
+;   Include file for the PPTST PIC application.
+;
+;   This application controls the PIC programmer tester.  The voltage of
+;   the programming lines from the programmer can be measured while
+;   left open, pulled low, or pulled high.  The programmer is controlled
+;   via the serial port.  LEDs are lit to indicate tests pass.
+;
+/include "pptstlib.ins.aspic"
+;
+;   Application configuration parameters
+;
+tickpms  equ     10          ;base clock ticks per millisecond
+gbank    equ     0           ;direct register bank for global variables
+;
+;   Status codes.  These are displayed on the LEDs.  All LEDs in the low state
+;   indicate no programmer detected.  All LEDs in the high state indicate the
+;   programmer passed the tests.  Any other value indicates the ID of the
+;   failure condition currently being tested for.  If a test fails, the ID of
+;   the failed test is displayed until the programmer is disconnected.
+;
+stat_noio equ    0           ;no apparent I/O connection to programmer
+
+stat_vddcmd equ  1           ;checking for which VDD-setting commands available
+stat_vdd6vhi equ 2           ;6V or fixed Vdd too high
+stat_vdd6vlo equ 3           ;6V or fixed Vdd too low
+stat_vdd6vld equ 4           ;6V or fixed Vdd droop with load
+stat_vdd3vhi equ 5           ;3V Vdd too high
+stat_vdd3vlo equ 6           ;3V Vdd too low
+stat_vdd3vld equ 7           ;3V Vdd droop with load
+stat_vdd0 equ    8           ;checking Vdd low side drive
+stat_vpphi equ   9           ;Vpp too high
+stat_vpplo equ   10          ;Vpp too low
+stat_vppld equ   11          ;Vpp high under load
+stat_vpp0 equ    12          ;checking Vpp low side drive
+stat_vdddat equ  13          ;setting Vdd to 5V for checking clock/data lines
+stat_pgchi equ   14          ;checking PGC driving high
+stat_pgclo equ   15          ;checking PGC driving low
+stat_pgdhi equ   16          ;checking PGD driving high
+stat_pgdlo equ   17          ;checking PGD driving low
+stat_pgddrop equ 18          ;checking PGD drive detect when open
+stat_pgddrlo equ 19          ;checking PGD drive detect when low
+stat_pgddrhi equ 20          ;checking PGD drive detect when high
+stat_pgdrdlo equ 21          ;checking PGD readback when low
+stat_pgdrdhi equ 22          ;checking PGD readback when high
+stat_name equ    23          ;setting the target programmer name
+
+stat_adcal equ   30          ;calibrating the A/D inputs
+stat_pass equ    31          ;all tests pass, programmer considered good
+;
+;   Derived constants.
+;
+tickus   equ     1000 / tickpms ;base clock tick period, uS
+gbankadr equ     bankadr(gbank) ;adr within globals bank (access bank on PIC18)
+;
+;**********
+;
+;   EEPROM allocation.
+;
+;   Used bytes of EEPROM are allocated here instead of using the linker.  This
+;   ensures consistant EEPROM layout between firmware versions.  The constants
+;   here are the byte offsets from the start of the EEPROM, and are the EEPROM
+;   addresses to pass to PROM_ADR.
+;
+  cblock 0                   ;start at beginning of the EEPROM
+         ;
+         ;   A/D channel calibration values.  These must be sequential.
+         ;
+         ad0cal: 4           ;A/D channel 0 calibration value
+         ad1cal: 4           ;A/D channel 1 calibration value
+         ad2cal: 4           ;A/D channel 2 calibration value
+         ad3cal: 4           ;A/D channel 3 calibration value
+
+    endc
+;
+;**********
+;
+;   Global flag bits.  As many GFL0 thru GFLn variables as needed are
+;   automatically created by the /FLAG preprocessor directive.  After all
+;   flags are defined, NFLAGB will be left indicating the number of GFLx
+;   variables created.  For each flag, the following assembler symbols
+;   will be defined:
+;
+;     flag_<name>_regn  -  0-N GFLn variable number containing the flag
+;     flag_<name>_bit   -  0-7 flag bit number within its GFLn variable
+;     flag_<name>       -  string substitution macro gfl<n>,<bit>.  This
+;                          symbol can be used directly with bit manupulation
+;                          instructions.
+;
+;   See the PREPIC documentation file for details of the /FLAG directive.
+;
+/flag    sin                 ;a serial line input byte is available
+/flag    sout                ;serial output can accept another byte
+/flag    wdone               ;wait interval is done
+/flag    wabort              ;abort on wait interval done
+
+/flag    cmdvdd              ;use VDD command to set programmer Vdd voltage
+;
+;**********
+;
+;   I/O pin declarations.  /INBIT and /OUTBIT are preprocessor
+;   directives.  Each one defines a single I/O pin.  See the PREPIC
+;   documentation file for details.  Briefly, the directives are:
+;
+;     /INBIT <name> <port> <bit> [pup]
+;     /OUTBIT <name> <port> <bit> [<initial value>]
+;
+;   The following assembler symbols will be defined for each /INBIT
+;   and /OUTBIT:
+;
+;     <name>_reg  -  Address of port register containing the bit.
+;     <name>_tris -  Address of TRIS register for the port.
+;     <name>_bit  -  0-7 bit number withing the port.
+;     <name>_pin  -  String substitution macro for the port register
+;                    and the I/O bit number.  This symbol can be used
+;                    directly with bit manipulation instructions.
+;
+;   The ports are initialized in the PORT module according to the I/O
+;   bit definitions here.
+;
+/inbit   vvdd    porta 0     ;analog voltage for programmer Vdd
+/inbit   vvpp    porta 1     ;analog voltage for programmer Vpp
+/inbit   vpgc    porta 2     ;analog voltage for programmer PGC
+/inbit   vpgd    porta 3     ;analog voltage for programmer PGD
+/outbit  vddh    porta 4 n   ;low turns on high load on Vdd
+/inbit   an4     porta 5     ;unused analog input
+
+/outbit  led0    portb 0     ;5 bit LED outputs
+/outbit  led1    portb 1
+/outbit  led2    portb 2
+/outbit  led3    portb 3
+/outbit  led4    portb 4
+/outbit  pgdl    portb 5     ;enable low load on PGD
+/inbit   rb6     portb 6 pup ;pulled to ground by RB6 pushbutton, also PGC
+/inbit   rb7     portb 7 pup ;pulled to ground by RB7 pushbutton, also PGD
+
+/outbit  vddl    portc 0     ;enable low load on Vdd
+/outbit  vpph    portc 1 n   ;enable high load on Vpp
+/outbit  vppl    portc 2     ;enable low load on Vpp
+/outbit  pgch    portc 3 n   ;enable high load on PGC
+/outbit  pgcl    portc 4     ;enable low load on PGC
+/outbit  pgdh    portc 5 n   ;enable high load on PGD
+/inbit   tx      portc 6     ;UART output, must be declared as input
+/inbit   rx      portc 7     ;UART input, must be declared as input
+;
+;*******************************************************************************
+;
+;   Macro SHOW tstat
+;
+;   Show the test status TSTAT.  TSTAT should be one of the STAT_xxx status
+;   codes defined earlier in this file.
+;
+;   REG8 is trashed.
+;
+show     macro   tstat
+         movf    reg0, w     ;save REG0 in REG8
+         movwf   reg8
+         loadk8  reg0, (tstat)
+         gcall   leds
+         movf    reg8, w     ;restore REG0 from REG8
+         movwf   reg0
+         endm
+;
+;*******************************************************************************
+;
+;   Macro STARTWAIT ms
+;
+;   Start a wait interval of MS milliseconds.  The actual wait time is rounded
+;   up to guarantee a wait of at least MS milliseconds.  If a wait interval is
+;   currently in progress then it is aborted.  FLAG_WDONE is reset by this macro
+;   and will be automatically set when the new wait interval elapses.
+;
+startwait macro  ms
+         local   nticks
+         extern_flags
+         extern  waittk      ;24 bit counter, ticks remaining to wait
+;
+;   Make total number of ticks to set WAITTK to.  The wait interval elapses when
+;   WAITTK is found to be 0 at the start of a tick, so its initial setting is
+;   the number of full clock tick intervals to wait.
+;
+nticks   set     (ms) * tickpms ;number of full ticks to wait
+
+         dbankif gbankadr
+         intr_off            ;temp disable interrupts
+         loadk24 waittk, nticks ;set number of full ticks left to wait
+         bcf     flag_wdone  ;reset wait interval elapsed flag
+         bcf     flag_wabort ;indicate to not abort on wait expired
+         intr_on             ;re-enable interrupts
+         endm
+;
+;*******************************************************************************
+;
+;   Macro WAIT
+;
+;   Wait for the current wait interval to elapse.
+;
+wait     macro
+         local   loop
+         extern_flags
+
+         dbankif gbankadr
+loop
+         btfss   flag_wdone  ;wait interval done ?
+         jump    loop        ;no, go back and check again
+         endm
+;
+;*******************************************************************************
+;
+;   Macro WAITMS ms
+;
+;   Wait the indicated number of milliseconds.  The actual wait time is rounded
+;   up as necessary to guarantee a wait of at least MS milliseconds.
+;
+waitms   macro   ms
+         startwait ms        ;start the wait interval
+         wait                ;wait for it to elapse
+         endm
+;
+;*******************************************************************************
+;
+;   Macro TIMEOUT_SET ms, abort
+;
+;   Start a timeout of length MS milliseconds.  If the timeout elapses before
+;   it is disabled (see TIMEOUT_OFF macro), then execution is aborted to ABORT.
+;   ABORT must be in top level code, not within any subroutine.
+;
+;   The actual timeout time is rounded up as necessary to guarantee a wait of at
+;   least MS milliseconds.
+;
+timeout_set macro ms, abort
+         local   nticks
+         extern_flags
+         extern  waittk      ;24 bit counter, ticks remaining to wait
+         extern  abortadr    ;address to jump to on timeout abort
+;
+;   Make total number of ticks to set WAITTK to.  The wait interval elapses when
+;   WAITTK is found to be 0 at the start of a tick, so its initial setting is
+;   the number of full clock tick intervals to wait.
+;
+nticks   set     (ms) * tickpms ;number of full ticks to wait
+
+         dbankif gbankadr
+         intr_off            ;temp disable interrupts
+         loadk24 waittk, nticks ;set number of full ticks left to wait
+         bcf     flag_wdone  ;reset wait interval elapsed flag
+         bsf     flag_wabort ;jump to ABORTADR when time expires
+         movlw   low (abort) ;save abort address
+         movwf   abortadr+0
+         movlw   high (abort)
+         movwf   abortadr+1
+         intr_on             ;re-enable interrupts
+         endm
+;
+;*******************************************************************************
+;
+;   Macro TIMEOUT_OFF
+;
+;   Turn off the current timeout, if any, so that execution will not be aborted
+;   when the timeout expires.  The timeout time is not altered, and FLAG_WDONE
+;   will still be set when the timeout expires.
+;
+timeout_off macro
+         dbankif gbankadr
+         bcf     flag_wabort
+         endm
+;
+;*******************************************************************************
+;
+;   Macro SEND bval
+;
+;   Send the constant byte BVAL out the serial port.
+;
+;   REG0 is trashed.
+;
+send     macro   bval
+         loadk8  reg0, (bval)
+         gcall   uart_put
+         endm
+;
+;*******************************************************************************
+;
+;   Macro EXPECT bval, abort
+;
+;   Check that the next byte received from the serial port is BVAL.  This macro
+;   waits indefinitely for a byte to be available.  If the expected byte is
+;   received, then executions follows the macro normally.  If a different
+;   byte is received, then this macro jumps to ABORT, which must be a local
+;   label.
+;
+;   REG0 is trashed.
+;
+expect   macro   bval, abort
+         dbankif gbankadr
+         gcall   uart_get    ;get the next byte from the serial port
+         movf    reg0, w     ;get the received byte
+         xorlw   (bval)      ;compare to the expected value
+         skip_z              ;was the expected byte ?
+         jump    abort       ;no, error
+         endm
+;
+;*******************************************************************************
+;
+;   Macro EXPECT_NONE abort
+;
+;   Check that no input byte is available from the serial port.  If one is,
+;   execution will jump to ABORT, which must be a local label.  If no input byte
+;   is available after a short time, then execution continues after the macro.
+;
+;   The current timeout, if any, is aborted.  No timeout or wait interval will
+;   be active after this macro, whether a input byte was found or not.
+;
+expect_none macro abort
+         waitms  10          ;wait a short while for byte to be received
+         dbankif gbankadr
+         btfsc   flag_sin    ;no input byte available ?
+         jump    abort       ;unexpected input byte, error
+         endm

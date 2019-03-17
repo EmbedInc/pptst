@@ -1,0 +1,26 @@
+;   Test a EasyProg (PRG firmware) programmer.
+;
+/include "pptst.ins.aspic"
+;
+;*******************************************************************************
+;
+testing_prg equ  1           ;testing programmer with PRG (EasyProg) firmware
+;
+;*******************************************************************************
+;
+;   Macro TEST_ENTRY
+;
+;   Create the code for the entry point to the test routine.  This macro
+;   is invoked in PPTST_TEST.INS.ASPIC, which is included below.  That
+;   allows data area and other definitions before the executable code.
+;
+test_entry macro
+.tprg    code
+         glbent  test_prg
+         endm
+
+/include "pptst_test.ins.aspic"
+
+rawname  dt      8, "EasyProg" ;unit name right after programming
+
+         end

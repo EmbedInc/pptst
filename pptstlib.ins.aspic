@@ -1,0 +1,16 @@
+;   This include file sets up the environment for the PPTST firmware.
+;
+/const   picname = "16F876"  ;PIC model this firmware will be run on
+/const   srcdir  = "picprg"  ;SOURCE directory containing this project
+/const   buildname = "pptst"   ;name of this project
+/include "(cog)src/pic/std_def.ins.aspic"
+;
+;   Set configuration for the standard routines and macros.  The stack
+;   location and size has been set to default by the STD_DEF include
+;   file, and can be customized before the STD include file.
+;
+stacklast set    h'EF'       ;address of last (highest address) stack byte
+stacksize set    40          ;number of bytes reserved for the stack
+/const   freq_osc real = 20.0e6 ;CPU oscillator frequency, Hz
+
+/include "(cog)src/pic/std.ins.aspic"

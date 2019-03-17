@@ -1,0 +1,410 @@
+;   Common include file used by the modules that test a particular type
+;   of programmer.  Those modules set assembly time variables so that the
+;   code here is configured at assembly time to the particular programmer.
+;   The code here is replicated for each programmer type.
+;
+;   The code here must either jump to TEST_PASS if all tests pass or TEST_FAIL
+;   if a test failed.  The LEDs are set indicating which test is being performed
+;   at the start of a test.  Jumping to TEST_FAIL causes this status to be
+;   displayed until the programmer is disconnected.  The code at TEST_PASS will
+;   set the LED to display pass status, so the LEDs state is irrelevant on
+;   jumping to TEST_PASS.
+;
+;*******************************************************************************
+;
+;   Configuration constants.
+;
+lbank    equ     2           ;register bank for the local state of this module
+;
+;   Derived constants.
+;
+lbankadr equ     bankadr(lbank) ;address within local state register bank
+
+  ifndef testing_prg
+testing_prg equ  0           ;not testing programmer with PRG (EasyProg) firmware
+    endif
+  ifndef testing_pprg
+testing_pprg equ 0           ;not testing programmer with PPRG (ProProg) firmware
+    endif
+  ifndef testing_eusb
+testing_eusb equ 0           ;not testing programmer with EUSB (USBProg) firmware
+    endif
+  ifndef testing_lprg
+testing_lprg equ 0           ;not testing programmer with LPRG (LProg) firmware
+    endif
+;
+;   Define specific constants for testing a EasyProg.
+;
+;   These have been initialized from the values for the USBProg and have not
+;   beed adjusted to the particulars of the EasyProg.
+;
+  if testing_prg
+vdd6min_k equ    5700        ;min mV for 6V Vdd
+vdd6max_k equ    6300        ;max mV for 6V Vdd
+vdddroop_k equ   100         ;max mV Vdd droop when under load
+vdd3min_k equ    2800        ;min mV for 3V Vdd
+vdd3max_k equ    3200        ;max mV for 3V Vdd
+vdd0max_k equ    550         ;max mV for Vdd driven low with load
+vppmin_k equ     12000       ;min Vpp voltage for 13V
+vppmax_k equ     14000       ;max Vpp voltage for 13V
+vppminl_k equ    12000       ;min Vpp with load to ground
+vpplow_k equ     800         ;max Vpp when driving low with pullup
+vpgcmin_k equ    2500        ;min PGC at 5V with low side load
+vpgcmax_k equ    1800        ;max PGC at 0V with high side load
+vpgdmin_k equ    2500        ;min PGD at 5V with low side load
+vpgdmax_k equ    1800        ;max PGD at 0V with high side load
+    endif
+;
+;   Define specific constants for testing a ProProg.
+;
+;   These have been initialized from the values for the USBProg and have not
+;   beed adjusted to the particulars of the ProProg.
+;
+  if testing_pprg
+vdd6min_k equ    5700        ;min mV for 6V Vdd
+vdd6max_k equ    6300        ;max mV for 6V Vdd
+vdddroop_k equ   100         ;max mV Vdd droop when under load
+vdd3min_k equ    2800        ;min mV for 3V Vdd
+vdd3max_k equ    3200        ;max mV for 3V Vdd
+vdd0max_k equ    550         ;max mV for Vdd driven low with load
+vppmin_k equ     12000       ;min Vpp voltage for 13V
+vppmax_k equ     14000       ;max Vpp voltage for 13V
+vppminl_k equ    12000       ;min Vpp with load to ground
+vpplow_k equ     800         ;max Vpp when driving low with pullup
+vpgcmin_k equ    2500        ;min PGC at 5V with low side load
+vpgcmax_k equ    1800        ;max PGC at 0V with high side load
+vpgdmin_k equ    2500        ;min PGD at 5V with low side load
+vpgdmax_k equ    1800        ;max PGD at 0V with high side load
+    endif
+;
+;   Define specific constants for testing a USBProg.
+;
+  if testing_eusb
+vdd6min_k equ    5700        ;min mV for 6V Vdd
+vdd6max_k equ    6300        ;max mV for 6V Vdd
+vdddroop_k equ   100         ;max mV Vdd droop when under load
+vdd3min_k equ    2800        ;min mV for 3V Vdd
+vdd3max_k equ    3200        ;max mV for 3V Vdd
+vdd0max_k equ    550         ;max mV for Vdd driven low with load
+vppmin_k equ     12000       ;min Vpp voltage for 13V
+vppmax_k equ     14000       ;max Vpp voltage for 13V
+vppminl_k equ    12000       ;min Vpp with load to ground
+vpplow_k equ     800         ;max Vpp when driving low with pullup
+vpgcmin_k equ    2500        ;min PGC at 5V with low side load
+vpgcmax_k equ    1800        ;max PGC at 0V with high side load
+vpgdmin_k equ    2500        ;min PGD at 5V with low side load
+vpgdmax_k equ    1800        ;max PGD at 0V with high side load
+    endif
+;
+;   Define specific constants for testing a LProg.
+;
+  if testing_lprg
+vddfmin_k equ    3100        ;min mV fixed Vdd
+vddfmax_k equ    3500        ;max mV fixed Vdd
+vdddroop_k equ   100         ;max mV Vdd droop when under load
+vdd0max_k equ    400         ;max mV for Vdd driven low with load
+vppmin_k equ     3100        ;min mV fixed Vpp
+vppmax_k equ     3500        ;max mV fixed Vpp
+vppminl_k equ    2800        ;min Vpp with load to ground
+vpplow_k equ     2300        ;max Vpp when driving low with pullup
+vpgcmin_k equ    1500        ;min PGC high with low side load
+vpgcmax_k equ    2300        ;max PGC low with high side load
+vpgdmin_k equ    1500        ;min PGD high with low side load
+vpgdmax_k equ    2300        ;max PGD low with high side load
+    endif
+;
+;   Define local variables.  These are defined in their own overlay section
+;   so that space for them is only allocated once despite this include file
+;   being referenced from multiple modules.  The code in those modules is
+;   never run concurrently since only one programmer is tested at a time.
+;
+; .ovrl#v(lbank) udata_ovr
+
+;
+;*******************************************************************************
+;
+;   Executable test code.  This code is replicated for each supported
+;   programmer.
+;
+         test_entry          ;define the customized entry point for this routine
+
+         gcall   test_vddcmd ;find which VDD-setting commands are available
+;
+;   Test Vdd at 6V.
+;
+  ifdef vdd6min_k
+         show    stat_vdd6vhi ;testing 6V Vdd too high
+         loadk16 reg0, 6000  ;set Vdd to 6.0V
+         gcall   test_vddset
+         gcall   ad_vdd      ;get measured Vdd mV into REG1:REG0
+         movf    reg0, w     ;save it in REG5:REG4
+         movwf   reg4
+         movf    reg1, w
+         movwf   reg5
+         loadk16 reg2, vdd6max_k ;check for maximum level
+         gcall   test_chkmax
+         show    stat_vdd6vlo ;testing for 6V Vdd too low
+         loadk16 reg2, vdd6min_k ;check for minimum level
+         gcall   test_chkmin
+         ;
+         ;   Check with load.  The unloaded measured mV is in REG5:REG4.
+         ;
+         show    stat_vdd6vld ;indicate testing Vdd at 6V with load to ground
+         set_vddl_on         ;enable load to ground on Vdd
+         gcall   test_waitad ;wait for A/D reading to settle
+         movlw   vdddroop_k  ;max allowed droop in mV
+         subwf   reg4, w     ;make min threshold low byte
+         movwf   reg2
+         skip_nborr
+         decf    reg5        ;propagate borrow
+         movf    reg5, w
+         movwf   reg3        ;set min threshold high byte
+         gcall   ad_vdd      ;get measured Vdd mV into REG1:REG0
+         gcall   test_chkmin ;check against minimum required level
+         set_vddl_off        ;turn off Vdd load to ground
+    endif
+;
+;   Test Vdd at 3V.
+;
+  ifdef vdd3min_k
+         show    stat_vdd3vhi ;testing for 3V Vdd too high
+         loadk16 reg0, 3000  ;set Vdd to 3.0V
+         gcall   test_vddset
+         gcall   ad_vdd      ;get measured Vdd mV into REG1:REG0
+         movf    reg0, w     ;save it in REG5:REG4
+         movwf   reg4
+         movf    reg1, w
+         movwf   reg5
+         loadk16 reg2, vdd3max_k ;check for maximum level
+         gcall   test_chkmax
+         show    stat_vdd3vlo ;testing for 3V Vdd too low
+         loadk16 reg2, vdd3min_k ;check for minimum level
+         gcall   test_chkmin
+         ;
+         ;   Check with load.  The unloaded measured mV is in REG5:REG4.
+         ;
+         show    stat_vdd3vld ;indicate testing Vdd at 3V with load to ground
+         set_vddl_on         ;enable load to ground on Vdd
+         gcall   test_waitad ;wait for A/D reading to settle
+         movlw   100         ;max allowed droop in mV
+         subwf   reg4, w     ;make min threshold low byte
+         movwf   reg2
+         skip_nborr
+         decf    reg5        ;propagate borrow
+         movf    reg5, w
+         movwf   reg3        ;set min threshold high byte
+         gcall   ad_vdd      ;get measured Vdd mV into REG1:REG0
+         gcall   test_chkmin ;check against minimum required level
+         set_vddl_off        ;turn off Vdd load to ground
+    endif
+;
+;   Test the fixed Vdd.
+;
+  ifdef vddfmin_k
+         show    stat_vdd6vhi ;testing for fixed Vdd too high
+         gcall   test_vddon  ;turn on Vdd to the fixed level
+         gcall   ad_vdd      ;get measured Vdd mV into REG1:REG0
+         movf    reg0, w     ;save it in REG5:REG4
+         movwf   reg4
+         movf    reg1, w
+         movwf   reg5
+         loadk16 reg2, vddfmax_k ;check for maximum level
+         gcall   test_chkmax
+         show    stat_vdd6vlo ;testing for fixed Vdd too low
+         loadk16 reg2, vddfmin_k ;check for minimum level
+         gcall   test_chkmin
+         ;
+         ;   Check with load.  The unloaded measured mV is in REG5:REG4.
+         ;
+         show    stat_vdd6vld ;indicate testing Vdd high with load to ground
+         set_vddl_on         ;enable load to ground on Vdd
+         gcall   test_waitad ;wait for A/D reading to settle
+         movlw   vdddroop_k  ;max allowed droop in mV
+         subwf   reg4, w     ;make min threshold low byte
+         movwf   reg2
+         skip_nborr
+         decf    reg5        ;propagate borrow
+         movf    reg5, w
+         movwf   reg3        ;set min threshold high byte
+         gcall   ad_vdd      ;get measured Vdd mV into REG1:REG0
+         gcall   test_chkmin ;check against minimum required level
+         set_vddl_off        ;turn off Vdd load to ground
+    endif
+;
+;   Test the programmer Vdd low side drive.
+;
+         show    stat_vdd0   ;indicate testing Vdd pulldown capability
+         gcall   test_vddzero ;drive Vdd to zero
+         set_vddh_on         ;turn on pullup load on Vdd
+         gcall   test_waitad ;wait for A/D reading to settle
+         gcall   ad_vdd      ;get Vdd mV into REG1:REG0
+         set_vddh_off        ;turn off pullup load on Vdd
+         loadk16 reg2, vdd0max_k ;check for below minimum level
+         gcall   test_chkmax
+;
+;   Test the programmer Vpp high side drive.
+;
+         show    stat_vpphi  ;checking for Vpp too high
+         send    21          ;VPPON command
+         gcall   test_ack    ;get ACK
+         gcall   test_sync   ;wait for everything to stabalize to new Vpp
+         gcall   ad_vpp      ;get Vpp in mV into REG1:REG0
+         loadk16 reg2, vppmax_k ;check against maximum level
+         gcall   test_chkmax
+         show    stat_vpplo  ;checking for Vpp too low
+         loadk16 reg2, vppmin_k ;check against minimum level
+         gcall   test_chkmin
+         ;
+         ;   Check with load to ground.
+         ;
+         show    stat_vppld  ;indicate testing Vpp high side under load
+         set_vppl_on         ;enable Vpp pulldown
+         gcall   test_waitad ;wait for A/D readings to stabalize
+         gcall   ad_vpp      ;get Vpp in mV into REG1:REG0
+         loadk16 reg2, vppminl_k ;get minimum required mV
+         gcall   test_chkmin
+         set_vppl_off        ;disable Vpp pulldown
+;
+;   Test the programmer Vpp low side drive.
+;
+         show    stat_vpp0   ;indicate testing Vpp low side drive
+         timeout_set 500, fail ;set timeout for operation to complete
+         send    22          ;VPPOFF command
+         gcall   test_ack    ;get ACK
+         gcall   test_sync   ;wait for everything to stabalize to new Vpp
+         set_vpph_on         ;enable Vpp pullup to 4.1V
+         gcall   test_waitad ;wait for A/D reading to settle
+         gcall   ad_vpp      ;get Vpp in mV into REG1:REG0
+         set_vpph_off        ;turn off pullup on Vpp
+         loadk16 reg2, vpplow_k ;check against max allowed level
+         gcall   test_chkmax
+;
+;   Set Vdd to 5V for testing PGC and PGD.
+;
+         show    stat_vdddat ;setting Vdd for testing clock and data lines
+  ifdef vdd6min_k
+         loadk16 reg0, 5000  ;set Vdd to 5.0V
+         gcall   test_vddset
+    else
+         gcall   test_vddon  ;set Vdd to its fixed on voltage
+    endif
+;
+;   Test PGC output.
+;
+         show    stat_pgchi  ;testing PGC high drive
+         send    8           ;send CLKH command
+         gcall   test_ack    ;get ACK
+         set_pgcl_on         ;turn on PGC low side load
+         gcall   test_waitad ;wait for A/D reading to settle
+         gcall   ad_pgc      ;get PGC mV into REG1:REG0
+         loadk16 reg2, vpgcmin_k ;check against min allowed level
+         gcall   test_chkmin
+         set_pgcl_off        ;turn off PGC low side load
+
+         show    stat_pgclo  ;testing PGC low drive
+         send    9           ;send CLKL command
+         gcall   test_ack    ;get ACK
+         set_pgch_on         ;turn on PGC high side load
+         gcall   test_waitad ;wait for A/D reading to settle
+         gcall   ad_pgc      ;get PGC mV into REG1:REG0
+         loadk16 reg2, vpgcmax_k ;check against max allowed level
+         gcall   test_chkmax
+         set_pgch_off        ;turn off PGC high side load
+;
+;   Test PGD output.
+;
+         show    stat_pgdhi  ;testing PGD high drive
+         send    10          ;send DATH command
+         gcall   test_ack    ;get ACK
+         set_pgdl_on         ;turn on PGD low side load
+         gcall   test_waitad ;wait for A/D reading to settle
+         gcall   ad_pgd      ;get PGD mV into REG1:REG0
+         loadk16 reg2, vpgdmin_k ;check against min allowed level
+         gcall   test_chkmin
+         set_pgdl_off        ;turn off PGD low side load
+
+         show    stat_pgdlo  ;testing PGD low drive
+         send    11          ;send DATL command
+         gcall   test_ack    ;get ACK
+         set_pgdh_on         ;turn on PGD high side load
+         gcall   test_waitad ;wait for A/D reading to settle
+         gcall   ad_pgd      ;get PGD mV into REG1:REG0
+         loadk16 reg2, vpgdmax_k ;check against max allowed level
+         gcall   test_chkmax
+         set_pgdh_off        ;turn off PGD high side load
+;
+;   Test detection of PGD being driven.
+;
+         show    stat_pgddrop ;testing PGD drive detection when PGD not driven
+         gcall   test_pgd    ;read PGD info into REG0
+         btfsc   reg0, 0     ;PGD detected floating ?
+         jump    fail        ;no
+
+         show    stat_pgddrlo ;testing PGD drive detection when PGD low
+         set_pgdl_on         ;drive PGD low
+         gcall   test_pgd    ;read PGD info into REG0
+         btfss   reg0, 0     ;PGD detected driven ?
+         jump    fail        ;no
+         set_pgdl_off        ;turn off PGD low drive
+
+         show    stat_pgddrhi ;testing PGD drive detection when PGD high
+         set_pgdh_on         ;drive PGD high
+         gcall   test_pgd    ;read PGD info into REG0
+         btfss   reg0, 0     ;PGD detected driven ?
+         jump    fail        ;no
+         set_pgdh_off        ;turn off PGD high drive
+;
+;   Test PGD data readback.
+;
+         show    stat_pgdrdlo ;testing PGD readback when low
+         set_pgdl_on         ;drive PGD low
+         gcall   test_pgd    ;read PGD info into REG0
+         btfsc   reg0, 1     ;PGD detected low ?
+         jump    fail        ;no
+         set_pgdl_off        ;turn off PGD low drive
+
+         show    stat_pgdrdhi ;testing PGD readback when high
+         set_pgdh_on         ;drive PGD high
+         gcall   test_pgd    ;read PGD info into REG0
+         btfss   reg0, 1     ;PGD detected high ?
+         jump    fail        ;no
+         set_pgdh_off        ;turn off PGD high drive
+;
+;   All tests passed.
+;
+;   Set the programmer user-definable name to indicate all tests passed if the
+;   name is currently what the name is set to when the control processor is
+;   initially programmed.  If the unit has this raw name, then we assume it is
+;   a newly built unit and this test is part of the production process.  In that
+;   case the name is set to "Passed".  This indicates to the production test
+;   program that all tests passed, and it then assigns the unit a unique serial
+;   number and sets its name accordingly.  If the unit does not have the
+;   original name then we assume it already has a serial number and is being
+;   tested stand-alone.  In that case we don't alter the name.
+;
+;   The raw name string for this type of programmer is in a RETLW table starting
+;   at RAWNAME.
+;
+         show    stat_name   ;indicate messing with the user-settable name
+
+         movlw   low rawname ;pass address of table containing raw name string
+         movwf   reg1
+         movlw   high rawname
+         movwf   reg2
+         gcall   test_checkname ;REG0=0 if unit name not match raw name
+         movf    reg0
+         skip_nz             ;unit is set to raw name ?
+         jump    done_name   ;no, don't try to change name
+
+         gcall   test_setname ;set UUT name to indicate tests passed, if possible
+done_name unbank             ;done with UUT name
+
+         extern  test_pass
+         gjump   test_pass   ;done performing tests
+;
+;   The current test failed.  The LEDs are already displaying the ID for
+;   the current test.
+;
+fail     unbank
+         extern  test_fail
+         gjump   test_fail

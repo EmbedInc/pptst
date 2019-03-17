@@ -1,0 +1,99 @@
+;   Procedural interface to the LEDs.
+;
+;   This version assumes that the LEDs are connected to adjacent bits of a
+;   single port in LSB/MSB order the same as the port, and that a bit value of
+;   1 is displayed by driving the port pin high.  The individual pins must be
+;   named LED0 - LED4.
+;
+/include "pptst.ins.aspic"
+
+         extern_flags        ;declare global flag bits EXTERN
+;
+;*******************************************************************************
+;
+;   Check for valid hardware configuration.
+;
+ii       set     0           ;init all pins on same port
+ii       set     ii | (led1_reg ^ led0_reg)
+ii       set     ii | (led2_reg ^ led0_reg)
+ii       set     ii | (led3_reg ^ led0_reg)
+ii       set     ii | (led4_reg ^ led0_reg)
+  if ii
+         error   All LED pins not on same port
+    endif
+
+ii       set     0
+ii       set     ii | ((led1_bit - 1) ^ led0_bit)
+ii       set     ii | ((led2_bit - 2) ^ led0_bit)
+ii       set     ii | ((led3_bit - 3) ^ led0_bit)
+ii       set     ii | ((led4_bit - 4) ^ led0_bit)
+  if ii
+         error   LED pins not adjacent or in LSB/MSB order
+    endif
+;
+;*******************************************************************************
+;
+;   Configuration constants.
+;
+lbank    equ     0           ;register bank for the local state of this module
+;
+;   Derived constants.
+;
+shleft   equ     led0_bit    ;number of bits to shift LEDs value left for port
+mask     equ     (b'11111' << shleft) ;mask for LED bits within I/O port
+lbankadr equ     bankadr(lbank) ;address within local state register bank
+;
+;*******************************************************************************
+;
+;   Global state.  All this state is assumed to be in the GBANK register
+;   bank by other modules.
+;
+         defram  gbankadr
+
+;
+;*******************************************************************************
+;
+;   Local state.
+;
+         defram  lbankadr
+
+.led     code
+;
+;*******************************************************************************
+;
+;   Subroutine LED_INIT
+;
+;   Initialize the hardware and software state managed by this module.
+;
+         glbsub  led_init, regf0
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine LEDS
+;
+;   Display the value in the low 5 bits of REG0 on the LEDs.
+;
+         glbsub  leds, regf0
+;
+;   Shift the 5 bit field in the low bits of REG0 into place for writing to the
+;   I/O port.
+;
+ii       set     shleft      ;init number of bits left to shift
+  while (ii != 0)
+         rlf     reg0        ;shift one bit left
+ii       set     ii - 1
+    endw
+
+         movlw   mask        ;mask in only the valid bits
+         andwf   reg0
+         dbankif led0_reg
+         movf    led0_reg, w ;get the existing port value
+         andlw   ~mask       ;mask off the existing LED bits
+         iorwf   reg0, w     ;merge in the new LED bits
+         movwf   led0_reg    ;write updated value back to port
+
+         leaverest
+
+         end

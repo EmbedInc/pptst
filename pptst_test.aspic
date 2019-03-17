@@ -1,0 +1,429 @@
+;   Common routines for use by the programmer test code.  The main programmer
+;   Test code is in PPTST_TEST.INS.ASPIC, which is replicated (with assembly
+;   time customizations) for each supported programmer.  The routines here
+;   are for use by that test code and are not replicated.  The routines here
+;   must therefore be generic to all programmers.
+;
+/include "pptst.ins.aspic"
+;
+;*******************************************************************************
+;
+;   Configuration constants.
+;
+lbank    equ     2           ;register bank for the local state of this module
+;
+;   Derived constants.
+;
+lbankadr equ     bankadr(lbank) ;address within local state register bank
+;
+;*******************************************************************************
+;
+;   Global state.  All this state is assumed to be in the GBANK register
+;   bank by other modules.
+;
+         defram  gbankadr
+
+;
+;*******************************************************************************
+;
+;   Local state.
+;
+         defram  lbankadr
+
+.test    code
+;
+;*******************************************************************************
+;
+;   Local routine FAIL
+;
+;   A test has failed.  The LEDs must already be indicating the specific test.
+;   This is just a convenience wrapper to the global entry point TEST_FAIL so
+;   that it can be jumped with a local label from inside this module.
+;
+         locent  fail
+
+         extern  test_fail
+         gjump   test_fail
+;
+;*******************************************************************************
+;
+;   Subroutine TEST_VDDCMD
+;
+;   Test for which commands are available to set the programmer Vdd output and
+;   set the relevant global flags accordingly.  The following flags are set:
+;
+;     FLAG_CMDVDD  -  The VDD command is available.  If this command is not
+;       available, then the VDDVALS command must be used to set the variable
+;       VDD level.
+;
+         glbsub  test_vddcmd, regf0
+
+         dbankif gbankadr
+         bcf     flag_cmdvdd ;init to VDD command is not available
+
+         show    stat_vddcmd ;indicate checking for VDD-setting commands
+         send    41          ;CHKCMD
+         send    65          ;VDD
+         timeout_set 10, test_fail ;abort to TEST_FAIL on response timeout
+         expect  1, fail     ;read ACK byte
+         gcall   uart_get    ;read response byte into REG0
+         dbankif gbankadr
+         movf    reg0
+         skip_z              ;VDD command not available ?
+         bsf     flag_cmdvdd ;indicate VDD command is available
+         expect_none fail    ;done with CHKCMD VDD command
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine TEST_VDDSET
+;
+;   Set the programmer Vdd output to the level in millivolts indicated by
+;   REG1:REG0.  Any wait interval or timeout will be cancelled.  This routine
+;   will abort to TEST_FAIL if a communication error is detected.
+;
+         glbsub  test_vddset, regfa | regfb
+
+         clrf    reg2        ;extend mV value into full REGA
+         clrf    reg3
+         loadk32 regb, [rnd [* 65536 [/ 250 6000]]] ;scale for 0-250 in high 16 bits
+         gcall   mulu        ;0-250 Vdd level into REG2
+         movf    reg2, w     ;get the 0-250 desired Vdd level
+         sublw   250         ;compare to max allowed value
+         movlw   250         ;get value to clip at in case needed
+         skip_wle            ;within range ?
+         movwf   reg2        ;no, set to max allowed value
+         movf    reg3
+         skip_z              ;higher bits set ?
+         movwf   reg2        ;yes, clip at max allowed value
+
+         dbankif gbankadr
+         btfsc   flag_cmdvdd ;use VDDVALS command ?
+         jump    use_vddcmd  ;use VDD command
+;
+;   Send VDDVALS command with all three values the desired level.
+;
+         send    16          ;VDDVALS opcode
+         movf    reg2, w
+         movwf   reg0        ;pass desired 0-250 Vdd level
+         gcall   uart_put    ;value for low Vdd level
+         gcall   uart_put    ;value for normal Vdd level
+         gcall   uart_put    ;value for high Vdd level
+         jump    vdd_sent    ;done sending Vdd setting command
+;
+;   Send VDD command.
+;
+use_vddcmd unbank
+         send    65          ;VDD opcode
+         movf    reg2, w
+         movwf   reg0        ;pass desired 0-250 Vdd level
+         gcall   uart_put    ;send it
+;
+;   The Vdd-setting command has been sent.
+;
+vdd_sent unbank
+         timeout_set 500, test_fail ;abort to TEST_FAIL on no response
+         expect  1, fail     ;read ACK byte
+         send    20          ;VDDOFF
+         expect  1, fail     ;read ACK byte
+         send    18          ;VDDNORM
+         expect  1, fail     ;read ACK byte
+         mcall   test_sync   ;wait for operation done, cancel timeout
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine TEST_VDDON
+;
+;   Cause the programmer to drive Vdd to the currently set level.
+;
+         glbsub  test_vddon, regf0
+
+         timeout_set 300, test_fail ;abort to TEST_FAIL on no response
+         send    18          ;send VDDNORM command
+         expect  1, fail     ;read ACK byte
+         mcall   test_sync   ;wait for the programmer to complete the operation
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine TEST_VDDZERO
+;
+;   Cause the programmer to drive Vdd to zero to the extent it can.
+;
+         glbsub  test_vddzero, regf0
+
+         timeout_set 300, test_fail ;abort to TEST_FAIL on no response
+         send    20          ;send VDDOFF command
+         expect  1, fail     ;read ACK byte
+         mcall   test_sync   ;wait for the programmer to complete the operation
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine TEST_CHKMIN
+;
+;   Check that the value in REG1:REG0 is greater than or equal to the value in
+;   REG3:REG2.  If not the test will be aborted and this routine will not return.
+;
+         glbsub  test_chkmin, noregs
+
+         movf    reg3, w     ;get limit high byte
+         subwf   reg1, w     ;compare to test value high byte
+         skip_wle
+         jump    fail        ;definitely below limit
+         skip_z              ;high bytes equal, need to test low byte
+         jump    cmin_leave  ;high bytes conclusive
+;
+;   High bytes are equal.
+;
+         movf    reg2, w     ;get limit low byte
+         subwf   reg0, w     ;compare to test value low byte
+         skip_wle            ;within limit ?
+         jump    fail        ;no
+
+cmin_leave unbank            ;common exit point
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine TEST_CHKMAX
+;
+;   Check that the value in REG1:REG0 is less than or equal to the value in
+;   REG3:REG2.  If not the test will be aborted and this routine will not return.
+;
+         glbsub  test_chkmax, noregs
+
+         movf    reg1, w     ;get test value high byte
+         subwf   reg3, w     ;compare to limit high byte
+         skip_wle
+         jump    fail        ;definitely above limit
+         skip_z              ;high bytes equal, need to test low byte
+         jump    cmax_leave  ;high bytes conclusive
+;
+;   High bytes are equal.
+;
+         movf    reg0, w     ;get test value low byte
+         subwf   reg2, w     ;compare to limit low byte
+         skip_wle            ;within limit ?
+         jump    fail        ;no
+
+cmax_leave unbank            ;common exit point
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine TEST_ACK
+;
+;   Read the ACK byte from a command.  The test is aborted if the ACK byte is
+;   not received within a reasonable time.  Any existing timeout is aborted.
+;
+         glbsub  test_ack, regf0
+
+         timeout_set 10, fail ;set timeout for receiving ACK
+         expect  1, fail     ;read the ACK byte
+         timeout_off
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine TEST_WAITAD
+;
+;   Wait long enough for the A/D filters to stabalize to a new input.
+;
+         glbsub  test_waitad, noregs
+
+         waitms  25
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine TEST_SYNC
+;
+;   Wait for the programmer to be done with the current command.  If a error
+;   is reported by the programmer, then the test is failed by aborting to
+;   TEST_FAIL.  When this subroutine returns successfully, there is no command
+;   pending in the programmer and it is immediately ready to accept another
+;   command.  If a timeout is in effect, it will be cancelled upon successful
+;   completion.  This routine waits to return until the A/D readings are stable
+;   for any new voltages.
+;
+         glbsub  test_sync, regf0
+
+         send    45          ;WAITCHK
+         expect  1, fail     ;read ACK byte
+         gcall   uart_get    ;get WAITCHK response byte in REG0
+         movf    reg0
+         skip_z              ;no errors detected by programmer ?
+         jump    fail        ;programmer reported error
+         expect_none fail    ;should be no more data from programmer
+         waitms  25          ;wait for filtered A/D values to stabalize
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine TEST_PGD
+;
+;   Get information from the programmer about whether PGD is being driven by the
+;   target and whether it is high or low.  Bit 0 (LSB) of REG0 is returned 1 if
+;   PGD is being driven and 0 if it is floating.  Bit 1 of REG0 is returned 1 to
+;   indicate PGD is high and 0 to indicate it is low.  All other REG0 bits are
+;   reserved and returned 0 in this version of this routine.
+;
+;   This routine automatically aborts if a expected response is not received
+;   from the programmer in time.  Any timeout at effect when this routine is
+;   called is cancelled.  No timeout will be in effect when this routine
+;   returns.
+;
+         glbsub  test_pgd, regf1
+
+         timeout_set 25, fail ;set timeout for all commands/responses to complete
+
+         send    12          ;send DATR command
+         expect  1, fail     ;get ACK byte
+         gcall   uart_get    ;get response byte into REG0
+         rlf     reg0, w     ;get PGD state into bit 1
+         andlw   2           ;make sure all other bits are 0
+         movwf   reg1        ;save PGD readback bit in REG1
+
+         send    13          ;send TDRIVE command
+         expect  1, fail     ;get ACK byte
+         gcall   uart_get    ;get response byte into REG0
+         movf    reg0, w     ;get the PGD driven state into bit 0
+         andlw   1           ;make sure all other bits are 0
+         iorwf   reg1, w     ;merge in PGD data bit
+         movwf   reg0        ;return combined byte
+
+         timeout_off         ;cancel timeout
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine TEST_SETNAME
+;
+;   Set the name of the programmer to "Passed" if this programmer has a user
+;   settable name.  The name "Passed" is recognized by the higher level host
+;   test software as indicating that all tests passed.
+;
+         glbsub  test_setname, regf0
+
+         movlw   stat_name   ;indicate trying to set target programmer name
+         movwf   reg0
+         gcall   leds
+
+         send    41          ;CHKCMD
+         send    66          ;NAMESET
+         timeout_set 25, test_fail ;abort to TEST_FAIL on response timeout
+         expect  1, fail     ;read ACK byte
+         gcall   uart_get    ;read response byte into REG0
+         dbankif gbankadr
+         movf    reg0
+         bz      sname_leave ;SETNAME command is not implemented ?
+
+         send    66          ;NAMESET
+         send    6           ;number of name characters that will follow
+         send    'P'
+         send    'a'
+         send    's'
+         send    's'
+         send    'e'
+         send    'd'
+         expect  1, fail     ;read ACK byte
+
+         send    68          ;REBOOT
+         waitms  100         ;give it a little time
+         gcall   uart_get_flush ;discard any bytes sent during reboot
+
+sname_leave unbank           ;common exit point
+         expect_none fail    ;there should be no bytes from the unit
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine TEST_CHECKNAME
+;
+;   Compare the name of the unit under test to a specific string.  The fixed
+;   string is in a RETLW table starting at the address in REG2:REG1.  The first
+;   byte is the number of characters in the string, which is then followed by
+;   the string characters, one per byte.
+;
+;   REG0 is returned 1 if the name of the unit under test matches the string,
+;   and 0 if it does not match or the name of the UUT could not be determined.
+;
+         glbsub  test_checkname, regf1 | regf2 | regf3
+
+         send    67          ;NAMEGET
+         waitms  25          ;wait for all bytes to be received
+         dbankif gbankadr
+         btfsc   flag_sin    ;no response bytes at all ?
+         jump    chknam_rsp  ;we have some response
+;
+;   Common code to return indicating no match.
+;
+chknam_no unbank
+         gcall   uart_get_flush ;discard any waiting received bytes
+         clrf    reg0        ;indicate no match
+         jump    chknam_leave
+;
+;   Something was received in response to the NAMEGET command.
+;
+chknam_rsp unbank
+         gcall   uart_get    ;get the ACK byte
+         decfsz  reg0        ;is ACK ?
+         jump    chknam_no   ;no, return with mismatch
+
+         dbankif gbankadr
+         btfss   flag_sin
+         jump    chknam_no   ;expected response byte not received
+         gcall   uart_get    ;get the length byte into REG0
+         movf    reg0, w
+         gcall   lookinc     ;get reference string length byte into W
+         xorwf   reg0, w     ;compare to received length byte
+         skip_z              ;lengths match ?
+         jump    chknam_no   ;no, return with mismatch
+         movf    reg0, w     ;get length, set Z flag according to length
+         skip_nz             ;strings are at least 1 byte long ?
+         jump    chknam_yes  ;both are empty strings, all done
+         movwf   reg3        ;init number of string bytes left to compare
+;
+;   Both strings are REG0 bytes long.  The next byte from the remote unit is the
+;   first name character.  REG2:REG1 contains the address of the first reference
+;   string byte.  REG3 is the string length, which is at least 1.
+;
+;   Register usage:
+;
+;     REG0  -  Data byte.
+;
+;     REG2:REG1  -  Table entry address of next reference string byte.
+;
+;     REG3  -  Number of bytes left to compare.
+;
+;     REG4  -  Temp data byte.
+;
+chknam_loop unbank           ;back here to compare each new name string character
+         dbankif gbankadr
+         btfss   flag_sin    ;a input byte is available as expected ?
+         jump    chknam_no   ;no, return with mismatch
+         gcall   uart_get    ;get next string byte from remote unit into REG0
+         gcall   lookinc     ;get reference string byte into W
+         xorwf   reg0, w     ;compare it to the received byte
+         skip_z              ;both bytes are the same ?
+         jump    chknam_no   ;no, return with mismatch
+         decfsz  reg3        ;count one less string byte left
+         jump    chknam_loop ;back to compare next string byte
+
+chknam_yes unbank            ;the strings matched
+         movlw   1           ;pass back strings matched indication
+         movwf   reg0
+
+chknam_leave unbank          ;common exit point REG0 already set
+         leaverest
+
+         end

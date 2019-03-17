@@ -1,0 +1,147 @@
+;   This module contains the main application routine that is run after
+;   the system is initialized.
+;
+/include "pptst.ins.aspic"
+
+         extern_flags        ;declare global flag bits EXTERN
+;
+;*******************************************************************************
+;
+;   Configuration constants.
+;
+lbank    equ     0           ;register bank for the local state of this module
+;
+;   Derived constants.
+;
+lbankadr equ     bankadr(lbank) ;address within local state register bank
+;
+;*******************************************************************************
+;
+;   Local state.
+;
+         defram  lbankadr
+
+
+.main    code
+;
+;*******************************************************************************
+;
+;   Routine MAIN
+;
+;   This entry point is jumped to from the INIT module, once system
+;   initialization is complete.
+;
+;   This routine walks thru the stages of testing a PIC programmer conforming
+;   to the Embed Inc PIC programmer protocol using a serial interface.  The 5
+;   LEDs are used to indicate the testing status.  All LED outputs low indicates
+;   a valid programmer was detected and all tests passed.  All LED outputs high
+;   indicates no valid programmer detected.  All other values indicate the ID
+;   of a particular test that failed.
+;
+         glbent  main
+
+loop_main unbank             ;back here to start a whole new test
+;
+;   Make sure the various programmer output line loads are all off.
+;
+         set_vddh_off
+         nop
+         nop
+         set_vddl_off
+         nop
+         nop
+
+         set_vpph_off
+         nop
+         nop
+         set_vppl_off
+         nop
+         nop
+
+         set_pgch_off
+         nop
+         nop
+         set_pgcl_off
+         nop
+         nop
+
+         set_pgdh_off
+         nop
+         nop
+         set_pgdl_off
+         nop
+         nop
+;
+;   Wait for programmer to be connected and make sure all its outputs are off.
+;
+         show    stat_noio   ;init to no programmer detected
+loop_prog unbank             ;back here to test again for programmer
+         gcall   uart_get_flush ;discard any buffered input bytes
+         send    2           ;send OFF command
+         timeout_set 500, loop_main ;abort to LOOP_MAIN on no response
+         expect  1, loop_main ;ACK
+         gcall   test_sync   ;wait for operation complete, cancel timeout
+;
+;   Determine the type of programmer and jump to the module to test that
+;   programmer.
+;
+         send    39          ;FWINFO2 command
+         timeout_set 10, loop_main ;abort to LOOP_MAIN on no response
+         expect  1, loop_main ;ACK
+         gcall   uart_get    ;get firmware version number into REG0
+         expect_none loop_main
+
+         movf    reg0        ;figure out which programmer is connected
+         skip_nz
+         jump    do_easyprog
+         decf    reg0
+         skip_nz
+         jump    do_proprog
+         decf    reg0
+         skip_nz
+         jump    do_usbprog
+         decf    reg0
+         skip_nz
+         jump    do_lprog
+         jump    loop_main   ;not a recognized supported programmer
+
+do_easyprog unbank           ;programmer is EasyProg
+         extern  test_prg
+         gjump   test_prg
+
+do_proprog unbank            ;programmer is ProProg
+         extern  test_pprg
+         gjump   test_pprg
+
+do_usbprog unbank            ;programmer is USBProg
+         extern  test_eusb
+         gjump   test_eusb
+
+do_lprog unbank              ;programmer is LProg
+         extern  test_lprg
+         gjump   test_lprg
+;
+;   All tests passed.  Show pass status and continue doing so until the
+;   programmer is disconnected.
+;
+         glbent  test_pass   ;jump here on all tests passed
+         show    stat_pass   ;show passed status on LEDs
+;
+;   Show the existing status on the LEDs until the programmer is disconnected,
+;   then go back to waiting for a new programmer to be connected.
+;
+         glbent  test_fail   ;jump here on a failure found, LEDs already showing status
+         timeout_off         ;disable current timeout, if any
+         gcall   stack_init  ;reset data stack to empty
+         waitms  500         ;wait for any new response bytes to be sent
+         gcall   uart_get_flush ;discard any buffered input bytes
+
+loop_done unbank
+         send    2           ;send OFF command
+         timeout_set 500, loop_main ;abort to LOOP_MAIN on no response
+         expect  1, loop_main ;ACK
+         expect_none loop_main
+         waitms  100         ;wait a little while before trying again
+         jump    loop_done   ;back to test programmer again
+
+         end

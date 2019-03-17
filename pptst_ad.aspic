@@ -1,0 +1,538 @@
+;   Low level A/D handler.
+;
+;   Four separate analog input channels are read and filtered, one each base
+;   system clock tick.  The sampling period for each of these channels is
+;   therefore four system clock ticks.
+;
+;   Each channel is filtered with a two pole filter that shifts 3 bits each
+;   pole.  The overall filter for each channel has a 99% settling time of
+;   50 iterations, which is 20mS at 400uS per sample (base clock tick period
+;   of 100uS).
+;
+/include "pptst.ins.aspic"
+;
+;*******************************************************************************
+;
+;   Configuration constants.
+;
+nchan    equ     4           ;number of A/D channels to read
+lbank    equ     2           ;register bank for the local state of this module
+;
+;   Derived constants.
+;
+lastchan equ     nchan - 1   ;0-N number of last channel to read
+lbankadr equ     bankadr(lbank) ;address within local state register bank
+
+chan0off equ     b'10000000' ;ADCON0 value for channel 0, A/D off
+                 ; 10------  select Fosc/32 conversion clock
+                 ; --000---  init to channel 0 selected
+                 ; -----0--  no A/D conversion in progress
+                 ; ------X-  unused bit
+                 ; -------0  A/D off
+chan0on  equ     chan0off | (1 << adon) ;ADCON0 for channel 0, A/D on
+calsize  equ     nchan * 4   ;bytes required for all the calibration values
+;
+;*******************************************************************************
+;
+;   Global state.  All this state is assumed to be in the GBANK register
+;   bank by other modules.
+;
+         defram  gbankadr
+
+;
+;*******************************************************************************
+;
+;   Local state.
+;
+         defram  lbankadr
+
+chan     res     1           ;0-N currently selected channel number
+
+ch0f0    res     2           ;channel 0 filters
+ch0f1    res     2
+ch1f0    res     2           ;channel 1 filters
+ch1f1    res     2
+ch2f0    res     2           ;channel 2 filters
+ch2f1    res     2
+ch3f0    res     2           ;channel 3 filters
+ch3f1    res     2
+
+ireg0    res     1           ;scratch registers used in interrupt routine
+ireg1    res     1
+ireg2    res     1
+ireg3    res     1
+;
+;   Calibration factors.  The calibration value for each channel is the value
+;   to mutliply the ras 0-1023 A/D reading by to make millivolts in the high
+;   16 bits of the 32 bit result.  These value originally computed by AD_CAL
+;   when calibration is performed.  They are stored in EEPROM and retrieved
+;   at module initialization time.
+;
+ii       set     0
+  while ii < nchan
+ch#v(ii)cal res  4           ;create the CHnCAL variable for this channel
+ii       set     ii + 1
+    endw
+
+
+.ad      code
+;
+;*******************************************************************************
+;
+;   Macro GETCAL chan
+;
+;   Get the calibration value for the channel CHAN into REGA.
+;
+getcal   macro   chan
+         dbankif lbankadr
+         movf    ch#v(chan)cal + 0, w
+         movwf   reg0
+         movf    ch#v(chan)cal + 1, w
+         movwf   reg1
+         movf    ch#v(chan)cal + 2, w
+         movwf   reg2
+         movf    ch#v(chan)cal + 3, w
+         movwf   reg3
+         endm
+;
+;*******************************************************************************
+;
+;   Local subroutine CAL_PUT
+;
+;   Save the current CHnCAL calibration values into the EEPROM.
+;
+;   Register usage:
+;
+;     REG0  -  Data byte.
+;
+;     REG1  -  Number of bytes left to do.
+;
+;     REG2  -  RAM address of next byte to do.
+;
+         locsub  cal_put, regf0 | regf1 | regf2
+
+         loadk16 reg0, ad0cal ;set address of first EEPROM byte to write to
+         gcall   prom_adr
+         loadk8  reg1, calsize ;init number of bytes left to do
+         movlw   low ch0cal  ;set address of next RAM byte
+         movwf   reg2
+
+loop_eeput unbank            ;back here each new byte
+         movf    reg2, w     ;point to source byte
+         movwf   fsr
+         ibankif lbankadr
+         movf    indf, w     ;fetch this byte from RAM
+         incf    reg2        ;update RAM address for next byte
+         movwf   reg0        ;pass the data byte
+         gcall   prom_write  ;write it to EEPROM
+         decfsz  reg1        ;count one less byte left to write
+         jump    loop_eeput  ;back to do next byte
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Local subroutine CAL_GET
+;
+;   Get the calibration values from EEPROM into the CHnCAL variables.
+;
+;   Register usage:
+;
+;     REG0  -  Data byte.
+;
+;     REG1  -  Number of bytes left to do.
+;
+;     REG2  -  RAM address of next byte to do.
+;
+         locsub  cal_get, regf0 | regf1 | regf2
+
+         loadk16 reg0, ad0cal ;set address of first EEPROM byte to read from
+         gcall   prom_adr
+         loadk8  reg1, calsize ;init number of bytes left to do
+         movlw   low ch0cal  ;set address of next RAM byte
+         movwf   reg2
+
+loop_eeget unbank            ;back here each new byte
+         gcall   prom_read   ;get this data byte into REG0
+         movf    reg2, w     ;point to the RAM location for this data byte
+         movwf   fsr
+         ibankif lbankadr
+         incf    reg2        ;update destination address for next byte
+         movf    reg0, w     ;get this data byte
+         movwf   indf        ;store it in the RAM variable
+         decfsz  reg1        ;count one less byte left to do
+         jump    loop_eeget  ;back to do next byte
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine AD_INIT
+;
+;   Initialize the hardware and software state managed by this module.
+;
+         glbsub  ad_init, regf0
+;
+;   Init the local state.
+;
+         dbankif lbankadr
+         clrf    chan        ;init to indicate channel 0 selected
+
+         ibankif lbankadr
+         movlw   low ch0f0   ;point to first filter byte
+         movwf   fsr
+         movlw   nchan * 4   ;number of bytes to clear
+         movwf   reg0        ;init loop counter
+init_loop                    ;back here each new filter byte to clear
+         clrf    indf        ;clear this filter byte
+         incf    fsr         ;point to next byte
+         decfsz  reg0        ;count one less byte left to do
+         jump    init_loop   ;back to do next byte
+
+         mcall   cal_get     ;get the calibration values from EEPROM
+;
+;   Init the A/D hardware.
+;
+         dbankif adcon1
+         movlw   b'00000010'
+                 ; 0-------  left justify 10 bit result in ADRESH:ADRESL
+                 ; -XXX----  unused bits
+                 ; ----0010  select AN0-AN4 analog, Vdd/Vss reference
+         movwf   adcon1
+
+         dbankif adcon0
+         movlw   chan0off    ;set up A/D, init to off
+         movwf   adcon0
+         bsf     adcon0, adon ;turn on the A/D, start acquisition
+
+         dbankif pie1
+         bsf     pie1, adie  ;enable A/D conversion done interrupts
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Routine AD_CONV
+;
+;   This routine is run from the interrupt module on a A/D conversion done
+;   interrupt.  It must jump to INTR_RET_AD when done.
+;
+;   A new A/D conversion is started during the base clock tick interrupt
+;   in the interrupt routine.  This routine must grab and process the result
+;   of that conversion and switch the A/D to the next channel.
+;
+         glbent  ad_conv
+
+         dbankif pir1
+         bcf     pir1, adif  ;clear the interrupt condition
+;
+;   Grab the result of the conversion into IREG1:IREG0.
+;
+         dbankif adresl
+         movf    adresl, w   ;grab low byte
+         dbankif lbankadr
+         movwf   ireg0       ;save it
+         dbankif adresh
+         movf    adresh, w   ;grab high byte
+         dbankif lbankadr
+         movwf   ireg1       ;save it
+;
+;   Switch to the next channel to start its acquisition.
+;
+         dbankif lbankadr
+         movf    chan, w     ;get channel of this conversion
+         movwf   ireg2       ;save it
+         addlw   1           ;make next channel number
+         andlw   3
+         movwf   chan        ;update channel number of next conversion
+         movwf   ireg3
+         rlf     ireg3       ;shift it into place for ADCON0
+         rlf     ireg3
+         rlf     ireg3, w
+         andlw   b'00111000' ;mask in only channel number field
+         iorlw   chan0on     ;merge with other control bits
+         dbankif adcon0
+         movwf   adcon0      ;select the next channel, start acquisition
+;
+;   Process the value from this acquisition.  The 10 bit acquisition result
+;   is in IREG1:IREG0 and its 0-N channel number is in IREG2.
+;
+         dbankif lbankadr
+         ibankif lbankadr
+         rlf     ireg2       ;make channel number x4
+         rlf     ireg2, w
+         andlw   b'11111100'
+         addlw   low ch0f0   ;make start address of filters for this channel
+         movwf   fsr         ;point to filters for this channel
+;
+;   FSR is pointing to the filter data for the channel the new reading is for.
+;   The new reading is in IREG1:IREG0.
+;
+;   Perform FILT0 <-- FILT0 + rshft(NEW - FILT0, 3)
+;
+         ;
+         ;   Make NEW - FILT0 into IREG2:IREG1:IREG0.
+         ;
+         clrf    ireg2       ;init upper byte of NEW - FILT
+
+         movf    indf, w     ;get FILT0 low byte
+         subwf   ireg0       ;make difference low byte
+         movlw   1           ;propagate borrow
+         skip_nborr
+         subwf   ireg1
+         skip_nborr
+         subwf   ireg2
+
+         incf    fsr         ;point to high byte of FILT0
+         movf    indf, w     ;get FILT0 high byte
+         subwf   ireg1       ;make difference high byte
+         skip_nborr
+         decf    ireg2       ;propagate the borrow
+         ;
+         ;   Shift (NEW - FILT0) right 3.  Only the low two bytes of the
+         ;   result are needed.  These will be in IREG1:IREG0.
+         ;
+         rrf     ireg2
+         rrf     ireg1
+         rrf     ireg0
+         rrf     ireg2
+         rrf     ireg1
+         rrf     ireg0
+         rrf     ireg2
+         rrf     ireg1
+         rrf     ireg0
+         ;
+         ;   Add the value in IREG1:IREG2 into FILT0.  FSR is currently pointing
+         ;   to the high byte of FILT0.
+         ;
+         decf    fsr         ;point to low byte of FILT0
+         movf    ireg0, w
+         addwf   indf        ;make sum low byte
+         incf    fsr         ;point to FILT0 high byte
+         skip_ncarr
+         incf    indf        ;propagate the carry
+
+         movf    ireg1, w
+         addwf   indf        ;make sum high byte
+;
+;   Perform FILT1 <-- FILT1 + rshft(FILT0 - FILT1, 3)
+;
+;   FSR is currently pointing to the high byte of FILT0.
+;
+         decf    fsr         ;point to FILT0 low byte
+         movf    indf, w     ;save low byte in IREG0
+         movwf   ireg0
+         incf    fsr
+         movf    indf, w     ;save high bytein IREG1
+         movwf   ireg1
+
+         incf    fsr         ;point to low byte of FILT1
+         ;
+         ;   Make FILT0 - FILT1 into IREG2:IREG1:IREG0.
+         ;   FILT0 is in IREG1:IREG0 and FSR is pointing to the low byte of
+         ;   FILT1.
+         ;
+         clrf    ireg2       ;init upper byte of FILT0 - FILT1
+
+         movf    indf, w     ;get FILT1 low byte
+         subwf   ireg0       ;make difference low byte
+         movlw   1           ;propagate borrow
+         skip_nborr
+         subwf   ireg1
+         skip_nborr
+         subwf   ireg2
+
+         incf    fsr         ;point to high byte of FILT1
+         movf    indf, w     ;get FILT1 high byte
+         subwf   ireg1       ;make difference high byte
+         skip_nborr
+         decf    ireg2       ;propagate the borrow
+         ;
+         ;   Shift (FILT0 - FILT1) right 3.  Only the low two bytes of the
+         ;   result are needed.  These will be in IREG1:IREG0.
+         ;
+         rrf     ireg2
+         rrf     ireg1
+         rrf     ireg0
+         rrf     ireg2
+         rrf     ireg1
+         rrf     ireg0
+         rrf     ireg2
+         rrf     ireg1
+         rrf     ireg0
+         ;
+         ;   Add the value in IREG1:IREG2 into FILT1.  FSR is currently pointing
+         ;   to the high byte of FILT1.
+         ;
+         decf    fsr         ;point to low byte of FILT1
+         movf    ireg0, w
+         addwf   indf        ;make sum low byte
+         incf    fsr         ;point to FILT1 high byte
+         skip_ncarr
+         incf    indf        ;propagate the carry
+
+         movf    ireg1, w
+         addwf   indf        ;make sum high byte
+
+         extern  intr_ret_ad
+         gjump   intr_ret_ad ;return to the interrupt module
+;
+;*******************************************************************************
+;
+;   Subroutine AD_VDD
+;
+;   Return the measured Vdd level in millivolts in REG1:REG0.
+;
+         glbsub  ad_vdd, regf2 | regf3 | regfb
+
+         getcal  0           ;get calibration value for Vdd
+         movlw   low ch0f1
+         movwf   fsr
+;
+;   Common code for all routines that return millivolts for a A/D channel.
+;   The multiply factor to convert the filtered A/D reading to millivolts
+;   shifted left 16 bits is in REGA.  FSR is pointing to the final
+;   filtered value for the selected A/D channel.  The remainder of REGA
+;   that is not being returned (REG2, REG3) and REGB have been pushed onto
+;   the data stack and must be restored before returning to the caller.
+;
+retmv    unbank
+         ibankif lbankadr
+         intr_off            ;temp disable interrupt to read filtered value
+         movf    indf, w     ;get filtered value low byte
+         movwf   regb+0
+         incf    fsr
+         movf    indf, w     ;get filtered value high byte
+         intr_on             ;re-enable interrupts
+         movwf   regb+1
+         clrf    regb+2
+         clrf    regb+3
+
+         gcall   mulu        ;REGA <-- REGA * REGB
+
+         movf    reg2, w     ;return result in REG1:REG0
+         movwf   reg0
+         movf    reg3, w
+         movwf   reg1
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine AD_VPP
+;
+;   Return the measured Vpp level in millivolts in REG1:REG0.
+;
+         glbsub  ad_vpp, regf2 | regf3 | regfb
+
+         getcal  1           ;get calibration value for Vpp
+         movlw   low ch1f1
+         movwf   fsr
+         jump    retmv       ;to common code to return value
+;
+;*******************************************************************************
+;
+;   Subroutine AD_PGC
+;
+;   Return the measured PGC level in millivolts in REG1:REG0.
+;
+         glbsub  ad_pgc, regf2 | regf3 | regfb
+
+         getcal  2           ;get calibration value for PGC
+         movlw   low ch2f1
+         movwf   fsr
+         jump    retmv       ;to common code to return value
+;
+;*******************************************************************************
+;
+;   Subroutine AD_PGD
+;
+;   Return the measured PGD level in millivolts in REG1:REG0.
+;
+         glbsub  ad_pgd, regf2 | regf3 | regfb
+
+         getcal  3           ;get calibration value for PGD
+         movlw   low ch3f1
+         movwf   fsr
+         jump    retmv       ;to common code to return value
+;
+;*******************************************************************************
+;
+;   Subroutine AD_CAL
+;
+;   Calibrate the A/D inputs.  The CHnCAL values will be derived, set as
+;   current, and saved in EEPROM.  It is assumed that the programmer Vdd, Vpp,
+;   PGC, and PGD lines are held at 5 volts.  This can be done by installing the
+;   calibration plug onto the 6 pin header.
+;
+;   The calibration values are derived by divding 5000 (the known value being
+;   measured in millivolts) by the actual A/D readings for each channel.
+;
+;   Register usage:
+;
+;     REGA  -  Numerator.
+;
+;     REGB  -  Denominator.
+;
+;     REG8  -  Number of channels left to do.
+;
+;     REG9  -  Address of next CHnF1 filtered A/D value to read.
+;
+;     REG10  -  Address of next CHnCAL calibration value to write.
+
+
+         glbsub  ad_cal, regfa | regfb | regf8 | regf9 | regf10
+
+         gcallnr test_waitad ;make really sure the A/D readings have settled
+         gcall   test_waitad
+
+         loadk8  reg8, nchan ;init number of channels left to do
+         movlw   low ch0f1   ;init address of next A/D reading to get
+         movwf   reg9
+         movlw   low ch0cal  ;init address of next calibration value to write
+         movwf   reg10
+
+loop_cal unbank              ;back here each new channel to compute cal value for
+         intr_off            ;disable interrupts around reading A/D value
+         movf    reg9, w     ;point to the A/D reading for this channel
+         movwf   fsr
+         ibankif lbankadr
+         movf    indf, w     ;get A/D reading for this channel into REGB
+         movwf   regb+0
+         incf    fsr
+         movf    indf, w
+         movwf   regb+1
+         intr_on             ;re-enable interrupts
+         clrf    regb+2
+         clrf    regb+3
+         movlw   4           ;increment A/D reading address for next time
+         addwf   reg9
+         loadk32 reg0, (5000 << 16) ;load numerator
+         movlw   (1 << flagb_quoa) ;indicate to store the quotient in REGA
+         movwf   flags
+         gcall   divu        ;unsigned 32 bit divide REGA / REGB --> REGA
+
+         movf    reg10, w    ;point to the calibration value for this channel
+         movwf   fsr
+         ibankif lbankadr
+         movf    reg0, w     ;store the calibration value into its CHnCAL variable
+         movwf   indf
+         incf    fsr
+         movf    reg1, w
+         movwf   indf
+         incf    fsr
+         movf    reg2, w
+         movwf   indf
+         incf    fsr
+         movf    reg3, w
+         movwf   indf
+         movlw   4           ;update address to store calibration value in next time
+         addwf   reg10
+
+         decfsz  reg8        ;count one less channel left to do
+         jump    loop_cal    ;back to do next channel
+
+         popregs savedregs   ;restore registers saved on entry to this routine
+         jump    cal_put     ;write calibration values to EEPROM and return to called
+
+         end

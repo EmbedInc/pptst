@@ -1,0 +1,26 @@
+;   Test a ProProg (PPRG firmware) programmer.
+;
+/include "pptst.ins.aspic"
+;
+;*******************************************************************************
+;
+testing_pprg equ 1           ;testing programmer with PPRG (ProProg) firmware
+;
+;*******************************************************************************
+;
+;   Macro TEST_ENTRY
+;
+;   Create the code for the entry point to the test routine.  This macro
+;   is invoked in PPTST_TEST.INS.ASPIC, which is included below.  That
+;   allows data area and other definitions before the executable code.
+;
+test_entry macro
+.tpprg   code
+         glbent  test_pprg
+         endm
+
+/include "pptst_test.ins.aspic"
+
+rawname  dt      7, "ProProg" ;unit name right after programming
+
+         end

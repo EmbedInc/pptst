@@ -1,0 +1,26 @@
+;   Test a USBProg (EUSB firmware) programmer.
+;
+/include "pptst.ins.aspic"
+;
+;*******************************************************************************
+;
+testing_eusb equ 1           ;testing programmer with EUSB (USBProg) firmware
+;
+;*******************************************************************************
+;
+;   Macro TEST_ENTRY
+;
+;   Create the code for the entry point to the test routine.  This macro
+;   is invoked in PPTST_TEST.INS.ASPIC, which is included below.  That
+;   allows data area and other definitions before the executable code.
+;
+test_entry macro
+.teusb   code
+         glbent  test_eusb
+         endm
+
+/include "pptst_test.ins.aspic"
+
+rawname  dt      7, "USBProg" ;unit name right after programming
+
+         end

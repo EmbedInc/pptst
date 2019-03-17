@@ -1,0 +1,235 @@
+;   Low level procedural interface to the EEPROM.
+;
+;   The following routines are exported which is the rest of the system's
+;   sole access to the EERPOM:
+;
+;     PROM_ADR  -  Set address of the next EEPROM read or write from REG1:REG0
+;
+;     PROM_READ  -  Read byte from current EEPROM address into REG0,
+;       then increment the current address.
+;
+;     PROM_WRITE  -  Write REG0 to current EEPROM address, then
+;       increment the current address.
+;
+;     PROM_FLUSH  -  Guarantees all write data is physically written
+;       to the EEPROM.  Write data may be buffered until this call.
+;
+;   This version accesses the built in on-chip EEPROM of a PIC 16.
+;
+/include "pptst.ins.aspic"
+;
+;*******************************************************************************
+;
+;   Configuration constants.
+;
+lbank    equ     0           ;register bank for local state
+;
+;   Derived constants.
+;
+lbankadr equ     bankadr(lbank) ;address within local state register bank
+;
+;*******************************************************************************
+;
+;   Local state.
+;
+         defram  lbankadr
+
+adr0     res     1           ;EEPROM address of next transfer, low byte
+  ifdef eeadrh
+adr1     res     1           ;high byte if hardware has high byte adr register
+    endif
+
+.prom    code
+;
+;*******************************************************************************
+;
+;   Macro WAIT_WRITE
+;
+;   Wait for the current write cycle, if any, to complete.
+;
+wait_write macro
+         local   loop
+         dbankif eecon1
+loop                         ;back here until write operation completed
+         btfsc   eecon1, wr  ;no write operation in progress ?
+         goto    loop        ;write in progress, back and check again
+         endm
+;
+;*******************************************************************************
+;
+;   Subroutine PROM_INIT
+;
+;   Initialize the hardware and state managed by this module.
+;
+         glbsub  prom_init, noregs
+
+         setreg  b'00000000', eecon1 ;set EEPROM hardware control bits
+                 ; 0-------  select access to data EEPROM, not program flash
+                 ; -XXX----  unused
+                 ; ----0---  clear write error condition, if any
+                 ; -----0--  inhibit write operations
+                 ; ------0-  do not initiate a write cycle
+                 ; -------0  do not initiate a read cycle
+
+         dbankif lbankadr
+         clrf    adr0        ;init EEPROM address for next transfer
+  ifdef adr1
+         clrf    adr1
+    endif
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine PROM_ADR
+;
+;   Set the address for subsequent EEPROM accesses.  The new address
+;   is passed in REG1:REG0.
+;
+         glbsub  prom_adr, noregs
+
+         dbankif lbankadr
+         movf    reg0, w     ;set address low byte
+         movwf   adr0
+  ifdef adr1
+         movf    reg1, w     ;set address high byte
+         movwf   adr1
+    endif
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine PROM_READ
+;
+;   Read one byte from the EEPROM into REG0.  The EEPROM address is advanced
+;   by 1 after the read.
+;
+         glbsub  prom_read, noregs
+
+         wait_write          ;wait for previous write, if any, to complete
+;
+;   Set the EEPROM address.
+;
+         dbankif lbankadr
+         movf    adr0, w     ;set address low byte
+         dbankif eeadr
+         movwf   eeadr
+  ifdef adr1
+         dbankif lbankadr    ;set address high byte
+         movf    adr1, w
+         dbankif eeadrh
+         movwf   eeadrh
+    endif
+;
+;   Have the EEPROM perform a read.  The result is written into the EEDATA
+;   register by the hardware.
+;
+         dbankif eecon1
+         bsf     eecon1, rd  ;read from the current EEPROM location
+;
+;   Increment the current EEPROM address.
+;
+         dbankif lbankadr
+         incf    adr0        ;increment low address byte
+  ifdef adr1
+         skip_nz             ;no carry into high byte ?
+         incf    adr1        ;propagate the carry
+    endif
+;
+;   Pass back the byte read from the EEPROM.
+;
+         dbankif eedata
+         movf    eedata, w   ;get the EEPROM data byte
+         movwf   reg0        ;return it in REG0
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine PROM_WRITE
+;
+;   Write the byte in REG0 to the EEPROM.  The EEPROM address is advanced
+;   by 1 after the write.
+;
+         glbsub  prom_write, regf1
+
+         wait_write          ;wait for previous write, if any, to complete
+;
+;   Set the EEPROM address.
+;
+         dbankif lbankadr
+         movf    adr0, w     ;set address low byte
+         dbankif eeadr
+         movwf   eeadr
+  ifdef adr1
+         dbankif lbankadr    ;set address high byte
+         movf    adr1, w
+         dbankif eeadrh
+         movwf   eeadrh
+    endif
+;
+;   Set the EEPROM data to write.
+;
+         dbankif eedata
+         movf    reg0, w     ;get the byte to write
+         movwf   eedata      ;use it to set the value to be written
+;
+;   Perform special sequence to enable writing to the EEPROM.  Yes, this
+;   is a bit strange, but that's what is required.
+;
+         dbankif eecon1
+         bsf     eecon1, wren ;set bit to enable writes to EEPROM
+
+         movf    intcon, w   ;get byte containing current interrupt enable bit
+         movwf   reg1        ;save it
+
+         dbankif eecon2
+         movlw   h'55'       ;get first magic value to write to EECON2
+         intr_off            ;interrupts must be off around the write sequence
+         dbankif eecon2
+         movwf   eecon2      ;write first magic value to EECON2
+         movlw   h'AA'       ;get the second magic value
+         movwf   eecon2      ;write the second magic value to EECON2
+         dbankif eecon1
+         bsf     eecon1, wr  ;start the write cycle
+
+         dbankif gbankadr
+         btfsc   reg1, gie   ;interrupts were originally disabled ?
+         bsf     intcon, gie ;interrupts were originally enabled, re-enable them
+
+         dbankif eecon1
+         bcf     eecon1, wren ;disable any new write cycles
+;
+;   Increment the current EEPROM address.
+;
+         dbankif lbankadr
+         incf    adr0        ;increment low address byte
+  ifdef adr1
+         skip_nz             ;no carry into high byte ?
+         incf    adr1        ;propagate the carry
+    endif
+
+         leaverest
+;
+;*******************************************************************************
+;
+;   Subroutine PROM_FLUSH
+;
+;   Force all buffered write data, if any, to be physically written to the
+;   non-volatile memory.  Write data is sometimes buffered and then written
+;   all at once within an EEPROM page.  This call causes any such buffered
+;   write data to be physically written.
+;
+;   This implementation is for the internal EEPROM of a PIC 16F876.  Each
+;   byte is written individually to this EEPROM and not buffered.  This
+;   version will only wait for the current write cycle, if any, to
+;   complete
+;
+         glbsub  prom_flush, noregs
+
+         wait_write          ;wait for previous write, if any, to complete
+
+         leaverest
+
+         end

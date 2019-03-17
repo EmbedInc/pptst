@@ -1,0 +1,55 @@
+;   Module to perform system initialization after the individual modules
+;   have been initialized.  The module initialization is done in the
+;   startup module PPTST_STRT.  The main application routine is jumped to
+;   once system initialization is complete.
+;
+/include "pptst.ins.aspic"
+
+         extern  main        ;main application routine start point
+;
+;*******************************************************************************
+;
+;   Configuration constants.
+;
+lbank    equ     0           ;register bank for the local state of this module
+;
+;   Derived constants.
+;
+lbankadr equ     bankadr(lbank) ;address within local state register bank
+;
+;*******************************************************************************
+;
+;   Local state.
+;
+         defram  lbankadr
+
+
+.init    code
+;
+;*******************************************************************************
+;
+;   Routine INIT
+;
+;   This routine is jumped to from the STRT module after the individual
+;   modules have been initialized.
+;
+         glbent  init
+;
+;   Calibrate the A/D inputs if the RB7 pushbutton is pressed.  The calibration
+;   plug must be plugged onto the 6 pin header.
+;
+         dbankif rb7_reg
+         btfsc   rb7_pin     ;RB7 button pressed ?
+         jump    no_rb7      ;no, skip this section
+
+         show    stat_adcal  ;indicate calibrating the A/D inputs
+         gcall   ad_cal      ;calibrate the A/D
+         waitms  250         ;make sure cal stat long enough to be seen
+no_rb7   unbank              ;done with A/D calibration
+;
+;   System initialization is complete.  Run the main foreground operating
+;   loop.
+;
+         gjump   main
+
+         end
