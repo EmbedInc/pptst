@@ -1,0 +1,126 @@
+<html lang="en-US">
+<head>
+  <link rel="stylesheet" href="../../../document.css"></link>
+  <link rel="stylesheet" href="../../document.css"></link>
+  <link rel="stylesheet" href="../document.css"></link>
+  <link rel="stylesheet" href="document.css"></link>
+  <title>PIC Programmer Test Setup</title>
+  </head>
+<body>
+
+<h1 class=page>PIC Programmer Test Setup</h1>
+<p class=page>Last updated 23 March 2019</p>
+
+<p>This document describes the setup of a PIC programmer tester.&nbsp; The
+actual test procedures using this tester for various programmers are
+described in separate documents:&nbsp;
+
+<p><ul>
+  <li><a href="lprog_test.htm">LProg</a>
+  <li><a href="usbprog_test.htm">USBProg</a>
+  <li><a href="usbprog2_test.htm">USBProg2</a>
+  </ul>
+
+<p>The correct firmware must be loaded into the tester depending on the
+programmer type to be tested.&nbsp;  Details of the firmware versions are
+in the <a href="fw_pptst.txt">FW_PPTST</a> documentation file.&nbsp;  The
+tester firmware versions for each target programmer type are:
+
+<center><table>
+  <thead>
+    <tr>
+      <th>&nbsp;&nbsp;Programmer&nbsp;&nbsp;
+      <th>&nbsp;&nbsp;Firmware&nbsp;&nbsp;
+    </thead>
+  <tbody>
+    <tr>
+      <td>USBProg
+      <td>PPTST06
+    <tr>
+      <td>USBProg2
+      <td>PPTST06
+    <tr>
+      <td>LProg
+      <td>PPTST05
+  </table></center>
+
+<p>The PPTST fimware HEX files are in the SRC > PICPRG directory within
+the software installation directory.&nbsp;
+
+<p>The firmware is programmed into the main control processor via the
+RJ-12 connector labeled "P5".&nbsp;  This connector uses the standard
+Microchip pinout and is compatible with a ICD2, for example.&nbsp;
+
+
+<h2>Calibration</h2><indent>
+
+  <p>Calibration constants unique to each tester unit are stored in the
+  EEPROM of the control processor.&nbsp;  Since these are erased when new
+  firmware is programmed into the processor, a unit must be calibrated
+  after new firmware is programmed into it.&nbsp;  Since the calibration
+  values are unique to each tester unit, the control processor may not be
+  swapped between units without recalibration.&nbsp;  Calibration can be
+  performed on a previously calibrated unit without harm.&nbsp;
+
+  <p>To calibrate a PIC programmer tester, first install the calibration
+  plug on the 6 pin header:&nbsp;
+
+  <p><center><img src="picprg_test/pptst2.jpg" width=600
+  height=450></center>
+
+  <p>Note that some testers may not have the additional 2 pin header shown
+  in the picture.&nbsp;  This header is used for testing LProg
+  programmers, which some testers may not be equipped for.&nbsp;
+
+  <p>The test plug shorts pins 1, 2, 4, 5, and 6 together.&nbsp;  Pin 3 is
+  left open.&nbsp;  Pin 1 is towards the top of the picture above.&nbsp;
+  These connections apply known 5 volts to all voltage measurement
+  lines.&nbsp;  The calibration values are computed assuming these lines
+  are driven to 5 volts.&nbsp;
+
+  <p>To perform calibration, hold the RB7 button down during power up or
+  restart:&nbsp;
+
+  <p><center><img src=picprg_test/pptst1.jpg width=600
+  height=450></center>
+
+  <p>To restart the unit, cycle power or briefly press the Reset button to
+  the left of the RJ-12 programming connector.&nbsp;  Make sure that the
+  RB7 button is pressed during this time.&nbsp;
+
+  <p>When calibration is successfully performed, the left 7 top LEDs will
+  be   lit and the right bottom LED will be lit.&nbsp;  This indication is
+  only displayed for about 1/2 second after calibration.&nbsp;  Remove the
+  test plug after calibration has been successfully performed.&nbsp;
+
+  <p>Once a tester has been calibrated, it is ready for normal
+  operation.&nbsp;  To proceed, refer to the test procedure for the
+  specific programmer type to be tested.&nbsp; Links to these test
+  procedures are provided at the top of this document.&nbsp;
+
+  </p></indent>
+
+<p><h2>USBProg and USBProg2 setup</h2><indent>
+
+  <p>The setup for the USBProg and USBProg2 is the same.&nbsp;  The RX and
+  TX jumpers must be installed.&nbsp;  These are located a little bit left
+  and below the RS-232 connector P28.&nbsp;
+
+  <p>The remaining jumpers PwrSIO and LedPwr must also be installed, but
+  these should already be installed as they are common to all uses of the
+  tester.&nbsp;
+
+  </p></indent>
+
+<p><h2>LProg setup</h2><indent>
+
+  <p>The RX and TX jumpers must be removed.&nbsp;  They are located a
+  little to the left and below the RS-232 connector P28.&nbsp;
+
+  <p>The remaining jumpers PwrSIO and LedPwr must also be installed, but
+  these should already be installed as they are common to all uses of the
+  tester.&nbsp;
+
+  </p></indent>
+
+</body></html>

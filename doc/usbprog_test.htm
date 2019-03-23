@@ -1,0 +1,272 @@
+<html>
+<head>
+<title>USBProg Production Test</title>
+</head>
+
+<body background=backg.jpg>
+<center><h1>USBProg Production Test Procedure</h1>
+Version 2.2, 17 Aug 2008
+</center>
+
+<p>This document describes the production test procedure for a USBProg PIC
+programmer.&nbsp;  Note that this is different from that of a USBProg2
+programmer, which is described in the <a
+href=usbprog2_test.htm>USBPROG2_TEST</a> documentation file.&nbsp;  The
+USBProg is a open circuit board, whereas the USBProg2 is a enclosed
+box.&nbsp;
+
+<dl><!-- start list for main headings -->
+
+
+<p><dt><h2>Version history</h2></dt><dd>
+A new major version indicates major or incompatible changes from the
+previous version.&nbsp;  A new minor version indicates clarifications,
+text fixes, and minor compatible changes.&nbsp;
+
+<dl><!-- start of list for Version History headings -->
+
+<p><dt><h3>1.0, 15 Mar 2008</h3><dt><dd>
+First version.&nbsp;  Used with first EUSB3 production run by Data Tehnic
+in March 2008.&nbsp;  Required manually entering whether tests passed or
+not.&nbsp;
+
+<p><dt><h3>2.0, 21 Apr 2008</h3><dt><dd>
+Updated to tester saves the tests pass/fail indication in the unit under
+test.&nbsp;  The USBPROG_TEST program can therefore determine for itself
+if all tests passed or not.&nbsp;  Added mention of USBPROG2_TEST
+document.&nbsp;
+
+<p><dt><h3>2.1, 16 May 2008</h3><dt><dd>
+Fixed typos and updated to new menu entry structure.&nbsp;
+
+<p><dt><h3>2.2, 17 Aug 2008</h3><dt><dd>
+Added reference to new documentation files <a
+href=picprg_test.htm>PICPRG_TEST</a>, which describes how to set up the
+tester, and <a href=usbprog_test_prog.txt>USBPROG_TEST_PROG</a>, which
+describes the PICPRG_TEST program by itself.&nbsp;
+
+
+
+</dl><!-- End of version headings -->
+
+
+<p><dt><h2>USBPROG_TEST Program</h2></dt><dd>
+<p>The USBPROG_TEST program automates parts of the production test of a
+USBProg and prompts the operator thru the steps.&nbsp;  The details of the
+USBPROG_TEST program are described in the <a
+href=usbprog_test_prog.txt>USBPROG_TEST_PROG</a> documentation file.&nbsp;
+However, this program should not be run directly when used in
+production.&nbsp;  It should only be run from the menu entry
+<b>Programs</b> &gt; <b>Embed Inc</b> &gt; <b>Production tests</b> &gt;
+<b>USBProg</b> &gt; <b>Board test</b>.&nbsp;  This menu entry fills in the
+command line options appropriately for testing a USBProg.&nbsp;
+
+
+<p><dt><h2>Tester Setup</h2></dt><dd>
+Before testing, it must be ensured that the tester is set up for the type
+of programmer being tested.&nbsp;  This is described in the documentation
+file <a href=picprg_test.htm>PICPRG_TEST</a>.&nbsp;  No action may be
+required if the tester was last used to test the same type of programmer,
+but this should be verified.&nbsp;
+
+<p>Make sure the tester is powered up.&nbsp;  The tester is implemented on
+a Embed Inc ReadyBoard-01, which can take a range of input power
+voltages.&nbsp;  See the <a
+href=http://www.embedinc.com/products/ready01>ReadyBoard-01</a> product
+description for details.&nbsp;
+
+
+<p><dt><h2>Test Procedure</h2></dt><dd>
+The USBPROG_TEST program will briefly indicate each step in the test
+process.&nbsp;  This section describes each step in detail.&nbsp;
+
+<p>The steps are:
+
+<dl><!-- start of individual steps -->
+
+<p><dt><h3>Indicate the tool programmer</h3><dt><dd>
+The USBPROG_TEST program must know which programmer it is to use as the
+tool for programming the PICs in the target unit.&nbsp;  It is assumed
+that the tool is a previously tested and fully operational USBProg or
+USBProg2.&nbsp;  Each such programmer has a unique name, and this step
+lets the program know the name of the particular USBProg to use.&nbsp;
+
+When first run, the program writes:
+
+<p><pre>Serial number of programmer used as tool:</pre>
+
+<p>First make sure the tool programmer is connected to the USB, then enter
+its serial number.&nbsp;  The serial number of each USBProg is indicated
+in the lower right corner of the PC board.&nbsp;  Other programmers may be
+labeled in different locations&nbsp;  The command <a
+href=picprg_list.txt>PICPRG_LIST</a> will list the names of all compatible
+plug-and-play programmers connected to the system.&nbsp;  The serial
+number is included in the factory default name of each unit.&nbsp;
+
+<p>After the serial number is entered, the program will query the tool
+programmer, then indicate its name and firmware version.&nbsp;  In this
+example, the programmer serial number was 100:
+
+<p><pre>Tool programmer is USBProg "USBProg0100", firmware version 19.</pre>
+
+<p><dt><h3>Program PIC #1</h3><dt><dd>
+The program now prompts:
+
+<p><pre>
+
+
+----------------------------------------
+Starting new test:
+
+Hold the programming cable to "P3 Prg7.5".
+Press ENTER to continue:</pre>
+
+<p>Before continuing, the programming cable from the tool programmer must
+be held into the pads of the connector labeled "P3 Prg7.5".&nbsp;  This is
+the left most connector of the row of four connectors at the top of the
+board.&nbsp;
+
+<p><center><img src=usbprog_test/prog1.jpg width=600 height=450></center>
+
+<p>No connectors are installed in these areas.&nbsp;  To connect to them,
+install the header on the end of the cable that would normally be soldered
+into the holes for the connector.&nbsp;  Push the cable at an angle to
+ensure that all pins are connecting to their pads, as can be seen in this
+closeup:&nbsp;
+
+<p><center><img src=usbprog_test/progclose.jpg width=600 height=450></center>
+
+<p>Note the orientation is so that the header key is towards the edge of
+the circuit board.&nbsp;  The key orientation is indicated by the double
+white lines on the circuit board.&nbsp;
+
+<p>Press ENTER once the cable is being held firmly into the connector
+pads.&nbsp;  The program output will be similar to:
+
+<p><pre>Firmware is type USBProg version 19 by Embed Inc.
+Programmer name is "USBProg0100".
+The target chip type is 10F204 revision 0.
+Erasing the target chip.
+Backup OSCCAL = C26
+Writing to program memory.
+Writing to ID and other locations.
+Performing verification at 2.20 volts.
+Performing verification at 5.50 volts.
+Writing and verifying the configuration bits.
+No errors.  Elapsed time was 2.7 seconds.</pre>
+
+<p><dt><h3>Program PIC #2</h3><dt><dd>
+The program now prompts:
+
+<p><pre>Hold the programming cable to "P6 Prg17".
+Press ENTER to continue:</pre>
+
+<p>This is the same procedure as the previous step except the cable is
+held into the second connector from the left:
+
+<p><center><img src=usbprog_test/prog2.jpg width=600 height=450></center>
+
+<p>Press ENTER when ready.&nbsp;  The program output will look like:
+
+<p><pre>Firmware is type USBProg version 19 by Embed Inc.
+Programmer name is "USBProg0100".
+The target chip type is 10F204 revision 0.
+Erasing the target chip.
+Backup OSCCAL = C2A
+Writing to program memory.
+Writing to ID and other locations.
+Performing verification at 2.20 volts.
+Performing verification at 5.50 volts.
+Writing and verifying the configuration bits.
+No errors.  Elapsed time was 2.5 seconds.</pre>
+
+<p><dt><h3>Program PIC #3</h3><dt><dd>
+The program now prompts:
+
+<p><pre>Hold the programming cable to "P4 PrgCtrl"
+Press ENTER to continue:</pre>
+
+<p>This is the same procedure as the previous step except the cable is
+held into the second connector from the right:
+
+<p><center><img src=usbprog_test/prog3.jpg width=600 height=450></center>
+
+<p>Press ENTER when ready.&nbsp;  The program output will look like:
+
+<p><pre>Firmware is type USBProg version 19 by Embed Inc.
+Programmer name is "USBProg0100".
+The target chip type is 18F2550 revision 2.
+Erasing the target chip.
+Writing to program memory.
+Writing to non-volatile data memory.
+Writing to ID and other locations.
+Performing verification at 4.50 volts.
+Performing verification at 5.50 volts.
+Writing and verifying the configuration bits.
+No errors.  Elapsed time was 12.7 seconds.</pre>
+
+<p><dt><h3>Test the newly programmed unit</h3><dt><dd>
+The program now prompts:
+
+<p><pre>Connect the target programmer USB to the computer, its programming output to
+the tester, and hold the 4 pin serial cable from the tester to "P5 Serial".
+Press ENTER when the tests have completed:</pre>
+
+<p>The target unit has now been fully programmed and its operation will be
+tested in this step.&nbsp;  The USB of the target unit must be connected
+to the computer's USB, and the RJ-12 programming output connected to the
+tester.&nbsp;  This picture shows the setup without the cable between the
+RS-232 adapter and the target programmer:
+
+<p><center><img src=usbprog_test/tester.jpg width=600 height=450></center>
+
+<p>To perform the test hold the cable from the RS-232 adapter into the
+connector pads labeled "P5 Serial".&nbsp;  The tests will start automatically
+once the serial connection is made.&nbsp;  While performing tests, the test
+setup should look like:
+
+<p><center><img src=usbprog_test/testing.jpg width=600 height=450></center>
+
+<p>When the tester discovers the programmer is connected, it performs a
+sequence of tests.&nbsp;  Each different test is indicated by a unique
+pattern displayed on the LEDs of the tester.&nbsp;  Each test takes only a
+part of a second, so the LEDs will change rapidly as the tests are
+performed.&nbsp;  When all tests pass, all the high LEDs are lit.&nbsp; If
+a test fails, the display freezes with the pattern for that test until the
+target programmer is disconnected.&nbsp;  The suite of tests takes less
+than 2 seconds to perform.&nbsp;
+
+<p>After the tests have completed, press ENTER.&nbsp;  The program will query the
+unit under test whether it passed or not and display the result.&nbsp;  If the
+unit passed all test, the program output will look similar to:
+
+<p><pre>Assigning serial number 0200.
+
+********** UNIT PASSED **********
+
+
+
+----------------------------------------
+Starting new test:
+
+Hold the programming cable to "P3 Prg7.5".
+Press ENTER to continue:</pre>
+
+<p><dt><h3>Write serial number on unit</h3><dt><dd>
+Write the serial number assigned by the test program in the previous step
+on the unit.&nbsp;  The serial number should be written on the white area
+for that purpose in the lower right corner of the PC board.&nbsp;  Do not
+write the leading zeros.&nbsp;  For the example above write "200", not
+"0200".&nbsp;  If pre-printed serial number labels have been provided, use
+these instead of writing the serial number by hand.&nbsp;
+
+<p><dt><h3>Finished</h3><dt><dd>
+This unit is now finished.&nbsp;  Proceed with the next unit by
+programming PIC #1 as indicated by the test program.&nbsp;  The test
+program will automatically assume a new unit is to be tested after
+completing the previous unit.&nbsp;  To exit the test program, press
+CTRL-C.&nbsp;
+
+</dl><!-- end of individual steps -->
+
+</body></html>

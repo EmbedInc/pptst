@@ -6,3 +6,4 @@ setlocal
 call godir "(cog)source/picprg/pptst"
 
 call build_fw
+call build_doc
