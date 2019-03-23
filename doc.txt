@@ -1,7 +1,6 @@
                        PIC Programmer Test Firmware
                               17 March 2019
 
-
 This document describes the PPTST firmware.  It runs on a Microchip PIC
 16F876 on a ReadyBoard-01 with additional circuitry added according to the
 PPTST schematic in the PICPRG schematics directory.  The purpose of the
@@ -57,8 +56,8 @@ Calibration
 
   Calibration is performed by installing the "PPTST CAL" plug onto the 6
   pin header.  This connects the Vpp, Vdd, PGD, and PGC signals to known 5
-  volts.  The values read from this known input is used to adjust the gain
-  factor of each A/D channel.  The connection to the serial port is
+  volts.  The values read from this known input are used to adjust the
+  gain factor of each A/D channel.  The connection to the serial port is
   irrelevant during calibration.
 
   Calibration is performed if the RB7 pushbutton is pressed on powerup or
@@ -76,7 +75,7 @@ Firmware versions
   PPTST 1, 24 Feb 2008
 
     First version.  This is the version sent to Data Technik for testing
-    USBProgs 200-299.  Parameters only set for USBProg. EasyProg and
+    USBProgs 200-299.  Parameters only set for USBProg.  EasyProg and
     ProProg have been implemented, but the test parameters are currently
     just copied from the USBProg.  Not intended for testing EasyProg or
     ProProg.
@@ -90,20 +89,26 @@ Firmware versions
     Only sets the target name to "Passed" when the tests pass if the name
     was the one a newly programmed unit has.  If the name is not as
     originally programmed, then the unit is assumed to have already been
-    assigned a serial number and and the name is not altered to avoid
-    loosing the serial number.  The special name "Passed" is only for use
-    with the production test program anyway, and that program assumes a
-    virgin board and programs all PICs before running the tests.
+    assigned a serial number and the name is not altered to avoid loosing
+    the serial number.  The special name "Passed" is only for use with the
+    production test program anyway, and that program assumes a virgin
+    board and programs all PICs before running the tests.
 
   PPTST 4, 10 Aug 2008
 
     Added support for LProg PIC programmer.  This programmer has fixed Vdd
-    and Vpp, and communicates of the serial link using 19.2Kbaud instead
-    of the normal 115.2Kbaud.  This version is fixed at 19.2Kbaud and is
-    therefore only usable with the LProg.
+    and Vpp, and communicates over the serial link using 19.2 kBaud
+    instead of the normal 115.2 kBaud.  This version is fixed at 19.2
+    kBaud and is therefore only usable with the LProg.
 
   PPTST 5 seq 1, 17 Mar 2019
 
     The source code was moved into its own subdirectory, which was set up
     as a GIT repository.  No functional changes to the source code.  The
     only changes were to support the different build script conventions.
+
+  PPTST 6 seq 6, 17 Mar 2019
+
+    Changed baud rate from 19.2 kBaud to 115.2 kBaud.  The baud rate is
+    actually 113.36 kBaud, which is 1.4% low.  That is still close enough
+    to communicate with a USBProg reliably.

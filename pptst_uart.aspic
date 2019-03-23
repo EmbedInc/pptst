@@ -10,7 +10,7 @@
 ;
 ;   Configuration constants.
 ;
-baud     equ     19200       ;serial line baud rate
+baud     equ     115200      ;serial line baud rate
 finsz    equ     82          ;input FIFO size
 fousz    equ     6           ;output FIFO size
 lbank    equ     3           ;register bank for the local state of this module
@@ -19,6 +19,7 @@ lbank    equ     3           ;register bank for the local state of this module
 ;
          uart_baud baud      ;set asm constants for UART configuration
 lbankadr equ     bankadr(lbank) ;address within local state register bank
+         messg   Baud rate #v(baud_real)
 ;
 ;*******************************************************************************
 ;
